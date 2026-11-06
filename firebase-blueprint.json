@@ -1,0 +1,279 @@
+{
+  "entities": {
+    "Notification": {
+      "title": "Notification",
+      "description": "Real-time crew flight assignment and schedule update notifications.",
+      "type": "object",
+      "properties": {
+        "crewId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "AeroOps crew member identifier."
+        },
+        "recipientEmail": {
+          "type": "string",
+          "maxLength": 254,
+          "description": "Normalized email of the target crew member."
+        },
+        "senderUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "Firebase Auth UID of the dispatcher or system user who triggered the notification."
+        },
+        "flightNo": {
+          "type": "string",
+          "maxLength": 32,
+          "description": "Flight designator associated with the notification."
+        },
+        "type": {
+          "type": "string",
+          "enum": ["FLIGHT_ASSIGNED", "FLIGHT_UPDATED", "GENERAL"],
+          "maxLength": 32,
+          "description": "Notification category."
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000,
+          "description": "Human-readable notification body."
+        },
+        "read": {
+          "type": "boolean",
+          "description": "Whether the crew member has read the notification."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server last-modified timestamp."
+        }
+      },
+      "required": [
+        "crewId",
+        "recipientEmail",
+        "senderUid",
+        "flightNo",
+        "type",
+        "message",
+        "read",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Role": {
+      "title": "Role",
+      "description": "Database-driven role and module permission list.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Unique role key."
+        },
+        "nameAr": {
+          "type": "string",
+          "maxLength": 64,
+          "description": "Arabic display label."
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 256,
+          "description": "Role description."
+        },
+        "perms": {
+          "type": "array",
+          "description": "Bounded list of granted permission keys."
+        },
+        "active": {
+          "type": "boolean",
+          "description": "Whether the role is active."
+        },
+        "updatedBy": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "Firebase Auth UID of the administrator who last updated the role."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server update timestamp."
+        }
+      },
+      "required": [
+        "name",
+        "nameAr",
+        "description",
+        "perms",
+        "active",
+        "updatedBy",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Settings": {
+      "title": "Settings",
+      "description": "WhatsApp Business integration configuration.",
+      "type": "object",
+      "properties": {
+        "whatsappPhoneNumber": {
+          "type": "string",
+          "maxLength": 32,
+          "description": "Sender WhatsApp Business phone number."
+        },
+        "phoneNumberId": {
+          "type": "string",
+          "maxLength": 64,
+          "description": "Meta WhatsApp Cloud API Phone Number ID."
+        },
+        "whatsappApiKey": {
+          "type": "string",
+          "maxLength": 512,
+          "description": "WhatsApp Business API access token."
+        },
+        "provider": {
+          "type": "string",
+          "enum": ["cloud_api", "apps_script", "wa_link"],
+          "maxLength": 32,
+          "description": "Active WhatsApp delivery transport."
+        },
+        "autoNotifyFlights": {
+          "type": "boolean",
+          "description": "Automatically trigger WhatsApp flight updates."
+        },
+        "updatedBy": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "Firebase Auth UID of the administrator."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server update timestamp."
+        }
+      },
+      "required": [
+        "whatsappPhoneNumber",
+        "phoneNumberId",
+        "whatsappApiKey",
+        "provider",
+        "autoNotifyFlights",
+        "updatedBy",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Permit": {
+      "title": "Permit",
+      "description": "Flight overflight and landing permit record.",
+      "type": "object",
+      "properties": {
+        "flightId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["DRAFT", "SUBMITTED", "APPROVED", "REJECTED", "EXPIRED"],
+          "maxLength": 32
+        },
+        "country": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "permitNo": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "authorUid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "flightId",
+        "status",
+        "country",
+        "permitNo",
+        "authorUid",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Admin": {
+      "title": "Admin",
+      "description": "System administrator registry.",
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 254
+        },
+        "role": {
+          "type": "string",
+          "enum": ["admin", "superAdmin"],
+          "maxLength": 32
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["email", "role", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/notifications/{notificationId}": {
+      "schema": "Notification",
+      "description": "Crew flight assignment and schedule change notifications."
+    },
+    "/roles/{roleId}": {
+      "schema": "Role",
+      "description": "Fine-grained role access control lists."
+    },
+    "/settings/{settingsId}": {
+      "schema": "Settings",
+      "description": "Protected integration settings documents."
+    },
+    "/permits/{permitId}": {
+      "schema": "Permit",
+      "description": "Flight permits records."
+    },
+    "/admins/{userId}": {
+      "schema": "Admin",
+      "description": "Trusted administrator UIDs."
+    }
+  }
+}

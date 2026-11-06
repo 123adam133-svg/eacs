@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#1e40af" />
+    <title>Flight Operations — إدارة العمليات الجوية</title>
+    <meta
+      name="description"
+      content="Comprehensive flight operations management system covering flight scheduling, EASA FTL compliance, crew & fleet management, CAMO/MEL airworthiness, flight permits, catering, live flight following, and ICAO General Declarations."
+    />
+    <meta property="og:title" content="Flight Operations — إدارة العمليات الجوية" />
+    <meta
+      property="og:description"
+      content="Comprehensive flight operations management system covering flight scheduling, EASA FTL compliance, crew & fleet management, CAMO/MEL airworthiness, flight permits, catering, live flight following, and ICAO General Declarations."
+    />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <!-- PWA & Mobile Meta -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Flight Ops" />
+    <meta name="format-detection" content="telephone=no" />
+    <link rel="apple-touch-icon" href="/api/app-logo.png" />
+    <link rel="icon" type="image/png" href="/api/app-logo.png" />
+    <link rel="manifest" href="/manifest.json" />
+
+    <!-- Immediate Branding & Logo Hydration from Settings Cache -->
+    <script>
+      (function() {
+        try {
+          var raw = localStorage.getItem('aeroops.settingsCache');
+          if (raw) {
+            var s = JSON.parse(raw);
+            if (s) {
+              var company = s.companyName || s.companyNameAr || '';
+              var opCode = (s.operatorCode || '').trim().toUpperCase();
+              var title = opCode ? (company ? company + ' (' + opCode + ') — Flight Operations' : opCode + ' — Flight Operations') : (company ? company + ' — Flight Operations' : 'Flight Operations — إدارة العمليات الجوية');
+              document.title = title;
+              var appleMeta = document.querySelector('meta[name="apple-mobile-web-app-title"]');
+              if (appleMeta) appleMeta.content = opCode || company || 'Flight Ops';
+              if (s.logo) {
+                var url = '/api/app-logo.png';
+                var icon = document.querySelector('link[rel="icon"]');
+                if (icon) icon.href = url;
+                var appleIcon = document.querySelector('link[rel="apple-touch-icon"]');
+                if (appleIcon) appleIcon.href = url;
+              }
+            }
+          }
+        } catch(e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

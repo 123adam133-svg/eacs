@@ -1,0 +1,8 @@
+{
+  "name": "AeroOps — Flight Operations",
+  "description": "Comprehensive flight operations management system (AeroOps) covering flight scheduling, EASA FTL compliance, crew & fleet management, CAMO/MEL airworthiness, flight permits, catering, live flight following, and ICAO General Declarations.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

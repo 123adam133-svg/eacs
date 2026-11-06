@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html dir="ltr">
+  <head>
+    <meta charset="utf-8" />
+    <title>General Declaration - A4</title>
+    <style>
+      @page {
+        size: 210mm 297mm;
+        margin: 0;
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      html,
+      body {
+        width: 210mm;
+        height: 297mm;
+        margin: 0;
+        padding: 0;
+        background: #e8e8e8;
+        font-family: "Times New Roman", serif;
+        font-size: 11pt;
+        color: #000;
+      }
+
+      .page {
+        width: 210mm;
+        height: 297mm;
+        margin: 0 auto;
+        padding: 3mm;
+        padding-top: 10mm;
+        background: #fff;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        box-sizing: border-box;
+        position: relative;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .top-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 2mm 4mm;
+        border: 1.5px solid #000;
+        border-bottom: 0;
+        min-height: 24mm;
+        background: #fff;
+        gap: 3mm;
+      }
+      .top-header .title-en {
+        font-size: 12pt;
+        font-weight: bold;
+        text-align: center;
+        flex: 1;
+        line-height: 1.35;
+      }
+      .top-header .logo {
+        max-width: 42mm;
+        max-height: 22mm;
+        object-fit: contain;
+        display: block;
+        margin: 0 auto;
+        flex-shrink: 0;
+      }
+      .top-header .title-ar {
+        font-family: Arial, sans-serif;
+        direction: rtl;
+        font-size: 12pt;
+        font-weight: bold;
+        text-align: center;
+        flex: 1;
+        line-height: 1.35;
+      }
+
+      table.main {
+        width: 100%;
+        flex: 1;
+        border-collapse: collapse;
+        table-layout: fixed;
+        border: 1.5px solid #000;
+        border-top: 0;
+      }
+      table.main td,
+      table.main th {
+        border: 1px solid #000;
+        padding: 0.8mm 1.2mm;
+        vertical-align: middle;
+        font-size: 10.5pt;
+        line-height: 1.25;
+        text-align: center;
+      }
+      .lbl {
+        font-weight: bold;
+        font-size: 10pt;
+        padding: 0.8mm;
+        background: #fff;
+      }
+      .lbl-ar {
+        font-family: Arial, sans-serif;
+        font-weight: normal;
+        direction: rtl;
+        display: inline;
+      }
+      .val {
+        text-align: center;
+        font-weight: bold;
+        font-size: 14pt;
+        font-family: "Times New Roman", serif;
+        padding: 1mm 1.2mm;
+      }
+      .title-row td {
+        font-weight: bold;
+        text-align: center;
+        font-size: 15pt;
+        padding: 2mm 1.2mm;
+        letter-spacing: 0.2mm;
+      }
+      .title-row td span {
+        font-size: 11pt !important;
+      }
+      .routing-title {
+        text-align: center;
+        font-weight: bold;
+        font-size: 11.5pt;
+        padding: 0.8mm;
+      }
+      .routing-sub {
+        text-align: center;
+        font-size: 9.5pt;
+        font-style: italic;
+        padding: 0.5mm 1mm 0.8mm;
+        font-weight: normal;
+      }
+
+      /* ⭐⭐⭐ Crew Table — يتمدد لملء A4 ⭐⭐⭐ */
+      table.crew {
+        width: 100%;
+        height: 100%;
+        border-collapse: collapse;
+        table-layout: fixed;
+      }
+      table.crew thead {
+        display: table-header-group;
+      }
+      table.crew tbody {
+        height: 100%;
+      }
+      table.crew tr {
+        height: auto;
+      }
+      table.crew th,
+      table.crew td {
+        border: 1px solid #000;
+        padding: 0.5mm 0.5mm;
+        vertical-align: middle;
+        font-size: 9pt;
+        text-align: center;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        line-height: 1.1;
+      }
+      table.crew th {
+        font-weight: bold;
+        font-size: 8pt;
+        background: #fff;
+        line-height: 1.1;
+        height: 7mm;
+        white-space: normal;
+        overflow: visible;
+      }
+      table.crew th .ar {
+        display: block;
+        font-family: Arial, sans-serif;
+        direction: rtl;
+        font-weight: normal;
+        font-size: 7.5pt;
+        margin-top: 0.2mm;
+      }
+      table.crew td {
+        height: auto;
+        font-size: 9.5pt;
+        padding: 1.5mm 0.5mm;
+        white-space: nowrap;
+      }
+      table.crew .c-no {
+        width: 5%;
+      }
+      table.crew .c-place {
+        width: 7%;
+      }
+      table.crew .c-name {
+        width: 22%;
+      }
+      table.crew .c-pass {
+        width: 12%;
+      }
+      table.crew .c-eac {
+        width: 12%;
+      }
+      table.crew .c-dob {
+        width: 11%;
+      }
+      table.crew .c-exp {
+        width: 11%;
+      }
+      table.crew .c-nat {
+        width: 6%;
+      }
+      table.crew td:nth-child(3) {
+        text-align: left;
+        padding-left: 2mm;
+      }
+      table.crew tr.empty-row td {
+        color: #666;
+      }
+
+      .right-table {
+        width: 100%;
+        height: 100%;
+        border-collapse: collapse;
+        table-layout: fixed;
+      }
+      .right-table td {
+        border: 1px solid #000;
+        padding: 1mm 1.2mm;
+        text-align: center;
+        vertical-align: middle;
+        font-size: 10pt;
+      }
+      .right-table .section-title {
+        font-weight: bold;
+        font-size: 10.5pt;
+        line-height: 1.35;
+      }
+      .right-table .section-title .ar {
+        display: block;
+        font-family: Arial, sans-serif;
+        direction: rtl;
+        font-weight: normal;
+        font-size: 10pt;
+        margin-top: 0.3mm;
+      }
+      .right-table .section-val {
+        font-weight: bold;
+        font-size: 15pt;
+        font-family: "Courier New", monospace;
+        padding: 1mm 0;
+      }
+      .right-table .empty-row {
+        height: 9mm;
+      }
+
+      .health-cell {
+        vertical-align: top;
+        padding: 1.5mm 2mm !important;
+        text-align: left;
+        font-size: 10pt;
+        line-height: 1.4;
+        border: 1px solid #000 !important;
+        height: 100%;
+      }
+      .health-cell .health-title {
+        font-weight: bold;
+        font-size: 11.5pt;
+        margin-bottom: 1.5mm;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .health-cell .health-title .ar {
+        font-family: Arial, sans-serif;
+        direction: rtl;
+        font-weight: normal;
+        font-size: 11pt;
+      }
+      .health-cell p {
+        margin-bottom: 1mm;
+        text-align: justify;
+        line-height: 1.45;
+      }
+      .health-cell .check {
+        margin: 1mm 0 1.5mm 0;
+        font-size: 10.5pt;
+        font-family: "Times New Roman", serif;
+      }
+      .health-cell .signature {
+        margin-top: 2mm;
+        font-size: 10.5pt;
+        line-height: 1.5;
+      }
+      .health-cell .signature .line {
+        display: inline-block;
+        border-bottom: 1px solid #000;
+        min-width: 45mm;
+        margin-left: 1mm;
+      }
+      .health-cell .crew-line {
+        margin-top: 1mm;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .health-cell .crew-line .ar {
+        font-family: Arial, sans-serif;
+        direction: rtl;
+        font-size: 10.5pt;
+      }
+
+      .official-cell {
+        vertical-align: top;
+        text-align: center;
+        padding: 0 !important;
+        width: 25%;
+        font-size: 10pt;
+        height: 100%;
+        border: 1px solid #000 !important;
+      }
+      .official-cell .official-title {
+        font-weight: bold;
+        font-size: 10.5pt;
+        margin: 0;
+        padding: 1.5mm 1.2mm;
+        line-height: 1.35;
+        border-bottom: 1px solid #000;
+        background: #fff;
+      }
+      .official-cell .official-title .en {
+        display: block;
+        font-size: 10.5pt;
+      }
+      .official-cell .official-title .ar {
+        display: block;
+        font-family: Arial, sans-serif;
+        direction: rtl;
+        font-weight: normal;
+        font-size: 10pt;
+        margin-top: 0.3mm;
+      }
+      .official-cell .stamp-area {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 1.5mm;
+        min-height: 55mm;
+        height: calc(100% - 12mm);
+        border: 0;
+      }
+      .official-cell .stamp-area img {
+        max-width: 45mm;
+        max-height: 45mm;
+        object-fit: contain;
+      }
+
+      @media print {
+        @page {
+          size: 210mm 297mm !important;
+          margin: 0 !important;
+        }
+        html,
+        body {
+          width: 210mm !important;
+          height: 297mm !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          background: #fff !important;
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+        }
+        .page {
+          width: 210mm !important;
+          height: 297mm !important;
+          margin: 0 !important;
+          padding: 3mm !important;
+          padding-top: 8mm !important;
+          box-shadow: none !important;
+          page-break-after: avoid !important;
+          page-break-inside: avoid !important;
+          overflow: visible !important;
+          transform: scale(0.92);
+          transform-origin: top center;
+        }
+        .top-header {
+          border: 1.5px solid #000 !important;
+          border-bottom: 0 !important;
+        }
+        table.main {
+          height: 100% !important;
+          border: 1.5px solid #000 !important;
+          border-top: 0 !important;
+        }
+        table,
+        tr,
+        td,
+        th {
+          page-break-inside: avoid !important;
+        }
+        * {
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <!-- ⭐⭐⭐ الهيدر — الاسم EN + الشعار وسط + الاسم AR ⭐⭐⭐ -->
+      <div class="top-header">
+        <div class="title-en" id="fld-company-en">
+          Executive Authority for Special Flights
+        </div>
+        <img id="fld-logo" class="logo" src="" alt="" style="display: none" />
+        <div class="title-ar" id="fld-company-ar">
+          الجهاز التنفيذي للطيران الخاص - ليبيا
+        </div>
+      </div>
+
+      <!-- ⭐ الجدول الرئيسي -->
+      <table class="main">
+        <colgroup>
+          <col style="width: 25%" />
+          <col style="width: 25%" />
+          <col style="width: 25%" />
+          <col style="width: 25%" />
+        </colgroup>
+        <tbody>
+          <tr class="title-row">
+            <td colspan="2" style="height: 10mm">
+              GENERAL DECLARATION<br />
+              <span style="font-weight: normal">(Outward/Inward)</span>
+            </td>
+            <td colspan="2" style="direction: rtl; font-family: Arial">
+              تصريح عام<br />
+              <span style="font-weight: normal">(ذهاب/اياب)</span>
+            </td>
+          </tr>
+
+          <tr>
+            <td class="lbl">
+              Operator<br />
+              <span class="lbl-ar">المشغل / الناقل</span>
+            </td>
+            <td
+              colspan="3"
+              class="val"
+              style="
+                font-size: 22pt;
+                font-weight: bold;
+                font-family: 'Courier New', monospace;
+                letter-spacing: 4px;
+                background: #fafafa;
+                padding: 2mm 0;
+              "
+              id="fld-operator-code"
+            >
+              EACS
+            </td>
+          </tr>
+
+          <tr>
+            <td class="lbl">Marks of Nationality and Registration*</td>
+            <td class="lbl">Flight No / رقم الرحلة</td>
+            <td colspan="2" class="lbl">Date / التاريخ</td>
+          </tr>
+
+          <tr>
+            <td class="val" id="fld-marks" style="font-size: 16pt"></td>
+            <td class="val" id="fld-flightno" style="font-size: 16pt"></td>
+            <td colspan="2" style="padding: 0">
+              <table style="width: 100%; border-collapse: collapse">
+                <tr>
+                  <td
+                    style="
+                      border: 0;
+                      border-right: 1px solid #000;
+                      padding: 1.2mm;
+                      text-align: center;
+                      font-weight: bold;
+                      font-size: 15pt;
+                      width: 33%;
+                    "
+                    id="fld-date-d"
+                  ></td>
+                  <td
+                    style="
+                      border: 0;
+                      border-right: 1px solid #000;
+                      padding: 1.2mm;
+                      text-align: center;
+                      font-weight: bold;
+                      font-size: 15pt;
+                      width: 33%;
+                    "
+                    id="fld-date-m"
+                  ></td>
+                  <td
+                    style="
+                      border: 0;
+                      padding: 1.2mm;
+                      text-align: center;
+                      font-weight: bold;
+                      font-size: 15pt;
+                      width: 34%;
+                    "
+                    id="fld-date-y"
+                  ></td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td colspan="2" class="lbl">
+              Departure from /
+              <span class="lbl-ar" style="display: inline">الذهاب من</span>
+            </td>
+            <td colspan="2" class="lbl">
+              Arrival at /
+              <span class="lbl-ar" style="display: inline">الوصول إلى</span>
+            </td>
+          </tr>
+
+          <tr>
+            <td colspan="2" class="val" style="padding: 0">
+              <div id="fld-dep" style="font-size: 15pt; padding: 0.8mm 0"></div>
+              <div
+                id="fld-dep-code"
+                style="
+                  font-size: 14pt;
+                  padding: 0.8mm 0;
+                  border-top: 1px dashed #999;
+                  color: #333;
+                  font-family: 'Courier New', monospace;
+                  font-weight: bold;
+                "
+              ></div>
+            </td>
+            <td colspan="2" class="val" style="padding: 0">
+              <div id="fld-arr" style="font-size: 15pt; padding: 0.8mm 0"></div>
+              <div
+                id="fld-arr-code"
+                style="
+                  font-size: 14pt;
+                  padding: 0.8mm 0;
+                  border-top: 1px dashed #999;
+                  color: #333;
+                  font-family: 'Courier New', monospace;
+                  font-weight: bold;
+                "
+              ></div>
+            </td>
+          </tr>
+
+          <tr>
+            <td colspan="4" class="routing-title">
+              FLIGHT ROUTING / خط سير الرحلة
+            </td>
+          </tr>
+          <tr>
+            <td colspan="4" class="routing-sub">
+              (Column always to list origin, every en-route stop and
+              destination)
+            </td>
+          </tr>
+
+          <tr style="height: 100%">
+            <td
+              colspan="3"
+              style="
+                padding: 0;
+                vertical-align: top;
+                border-right: 1px solid #000;
+                height: 100%;
+              "
+            >
+              <table class="crew">
+                <thead>
+                  <tr>
+                    <th class="c-no">ت.<br />No</th>
+                    <th class="c-place">الوظيفة<br />PLACE</th>
+                    <th class="c-name">أعضاء الطاقم<br />CREW NAME</th>
+                    <th class="c-pass">Passport<br />جواز السفر</th>
+                    <th class="c-eac">E-NUMBER<br />الرقم الآلي</th>
+                    <th class="c-dob">Birth<br />الميلاد</th>
+                    <th class="c-exp">Expiry<br />الانتهاء</th>
+                    <th class="c-nat">Nat.<br />الجنسية</th>
+                  </tr>
+                </thead>
+                <tbody id="crew-body"></tbody>
+              </table>
+            </td>
+
+            <td
+              style="width: 25%; padding: 0; vertical-align: top; height: 100%"
+            >
+              <table class="right-table">
+                <tbody>
+                  <tr>
+                    <td class="section-title" style="padding: 1mm">
+                      Departure Place / مكان المغادرة
+                      <div class="section-val" id="fld-dep-place"></div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td
+                      class="empty-row"
+                      style="font-weight: bold; font-size: 10pt"
+                    >
+                      Embarking
+                    </td>
+                  </tr>
+                  <tr>
+                    <td
+                      class="empty-row"
+                      style="font-weight: bold; font-size: 10pt"
+                    >
+                      Through on same flight
+                    </td>
+                  </tr>
+                  <tr>
+                    <td class="section-title" style="padding: 1mm">
+                      Arrival Place / مكان الوصول
+                      <div class="section-val" id="fld-arr-place"></div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td
+                      class="empty-row"
+                      style="font-weight: bold; font-size: 10pt"
+                    >
+                      Disembarking
+                    </td>
+                  </tr>
+                  <tr>
+                    <td
+                      class="empty-row"
+                      style="font-weight: bold; font-size: 10pt"
+                    >
+                      Through on same flight
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td colspan="3" class="health-cell">
+              <div class="health-title">
+                <span>Declaration of Health*</span>
+                <span class="ar">/ التصريح الصحي</span>
+              </div>
+
+              <p>
+                Persons on board with illnesses other than airsickness or the
+                effects of accidents (including persons with symptoms or signs
+                of illness such as rash, fever, chills, diarrhea) as well as
+                those cases of illness disembarked during the flight
+                ..................
+              </p>
+              <div class="check">☒ None / ☐ Yes (Number............)</div>
+
+              <p>
+                Any other conditions on board which may lead to the spread of
+                disease ....................................................
+              </p>
+              <div class="check">☒ None / ☐ Yes (Number............)</div>
+
+              <p>
+                Details of each disinfecting or sanitary treatment (place, date,
+                time, method) during the flight. If no disinfecting has been
+                carried out during the flight, give details of most recent
+                disinfecting ......
+              </p>
+              <div class="check">
+                ☒ None / ☐ Yes (Place.......... Date ...../...../2025 method
+                ....................................................)
+              </div>
+
+              <div class="signature">
+                Signed, if required <span class="line"></span>
+              </div>
+              <div class="crew-line">
+                <span>Crew member concerned</span>
+                <span class="ar">عضو الطاقم الجوي المخول /</span>
+              </div>
+            </td>
+
+            <td class="official-cell">
+              <div class="official-title">
+                <span class="en">For official use only</span>
+                <span class="ar">للاستخدام الرسمي فقط</span>
+              </div>
+              <div class="stamp-area"></div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </body>
+</html>
