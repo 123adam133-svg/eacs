@@ -164,15 +164,15 @@ export function StandbyModule({
   return (
     <div className="space-y-3">
       {/* ═══ Header ═══ */}
-      <div className="bg-gradient-to-r from-amber-600 to-orange-700 rounded-xl p-4 text-white shadow-lg">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-white/20 rounded-lg flex items-center justify-center">
-              <Clock className="w-7 h-7" />
+      <div className="bg-gradient-to-r from-amber-600 to-orange-700 rounded-xl p-3 text-white shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-2.5">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center shrink-0">
+              <Clock className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="text-xl font-bold">{t.standbyTitle}</h2>
-              <div className="text-xs text-amber-100">
+              <h2 className="text-base font-bold leading-tight">{t.standbyTitle}</h2>
+              <div className="text-[11px] text-amber-100">
                 {t.standbyEASA} · {stats.total} entries · {stats.active} active
               </div>
             </div>

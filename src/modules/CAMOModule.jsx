@@ -536,10 +536,10 @@ export function CAMOModule({
         <div className="flex flex-wrap gap-2 items-center justify-between mb-3">
           <div className="flex items-center gap-3">
             <div
-              className="w-10 h-10 rounded-lg flex items-center justify-center shadow-md"
+              className="w-8 h-8 rounded-lg flex items-center justify-center shadow-xs shrink-0"
               style={{ background: "var(--brand-gradient)" }}
             >
-              <ShieldCheck className="w-6 h-6 text-white" />
+              <ShieldCheck className="w-4 h-4 text-white" />
             </div>
             <div>
               <h2
@@ -1681,10 +1681,10 @@ export function CAMOModule({
               }}
             >
               <div
-                className="w-11 h-11 rounded-lg flex items-center justify-center"
+                className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
                 style={{ background: "var(--brand-gradient)" }}
               >
-                <ShieldCheck className="w-6 h-6 text-white" />
+                <ShieldCheck className="w-4 h-4 text-white" />
               </div>
               <div className="flex-1 min-w-0">
                 <div

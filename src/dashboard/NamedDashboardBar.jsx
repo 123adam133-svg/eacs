@@ -27,6 +27,8 @@ export function NamedDashboardBar({
   onOpenCreate,
   onOpenEditActive,
   onOpenDirectory,
+  viewOnly = false,
+  onOpenSettings,
   totalScopedCount = 0,
   lang = "en",
 }) {
@@ -34,7 +36,7 @@ export function NamedDashboardBar({
 
   return (
     <div
-      className="rounded-xl px-3 py-2.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5"
+      className="rounded-xl px-3 py-2 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5"
       style={{
         backgroundColor: "var(--bg-card)",
         border: "1px solid var(--border-default)",
@@ -102,15 +104,9 @@ export function NamedDashboardBar({
               )}
               <span>{title}</span>
               <span
-                className="px-1.5 py-0.2 rounded text-[10px] font-mono tabular-nums"
-                style={{
-                  backgroundColor: isActive
-                    ? "rgba(255,255,255,0.22)"
-                    : "var(--bg-card)",
-                  color: isActive ? "#ffffff" : "var(--text-muted)",
-                }}
+                className="text-[11px] font-mono tabular-nums opacity-75"
               >
-                {widgetCount}
+                · {widgetCount}
               </span>
             </button>
           );
@@ -125,14 +121,14 @@ export function NamedDashboardBar({
         )}
       </div>
 
-      {/* Right: Create & Permissions Management Controls */}
-      {(canManage || (activeDashboard && canEditActive)) && (
-        <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
-          {activeDashboard && (canManage || canEditActive) && (
+      {/* Right: Settings Shortcut (viewOnly) OR Inline Management Controls */}
+      {viewOnly ? (
+        onOpenSettings ? (
+          <div className="flex items-center shrink-0">
             <button
               type="button"
-              onClick={() => onOpenEditActive?.(activeDashboard)}
-              className="px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 whitespace-nowrap transition hover:opacity-85"
+              onClick={onOpenSettings}
+              className="px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 whitespace-nowrap shrink-0 transition hover:opacity-85"
               style={{
                 backgroundColor: "var(--bg-app)",
                 border: "1px solid var(--border-default)",
@@ -140,56 +136,84 @@ export function NamedDashboardBar({
               }}
               title={
                 isAr
-                  ? "تعديل اسم اللوحة الحالية وصلاحياتها"
-                  : "Rename active dashboard & edit permissions"
+                  ? "تخصيص وتسمية اللوحات من الإعدادات"
+                  : "Customize & name dashboards in Settings"
               }
             >
-              <Shield
-                className="w-3.5 h-3.5"
+              <SlidersHorizontal
+                className="w-3.5 h-3.5 shrink-0"
                 style={{ color: "var(--brand-primary)" }}
               />
-              <span>{isAr ? "الاسم والصلاحيات" : "Name & Access"}</span>
+              <span>{isAr ? "تخصيص من الإعدادات" : "Settings"}</span>
             </button>
-          )}
-
-          {canManage && (
-            <>
+          </div>
+        ) : null
+      ) : (
+        (canManage || (activeDashboard && canEditActive)) && (
+          <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
+            {activeDashboard && (canManage || canEditActive) && (
               <button
                 type="button"
-                onClick={onOpenDirectory}
-                className="px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 whitespace-nowrap transition hover:opacity-85"
+                onClick={() => onOpenEditActive?.(activeDashboard)}
+                className="px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 whitespace-nowrap shrink-0 transition hover:opacity-85"
                 style={{
                   backgroundColor: "var(--bg-app)",
                   border: "1px solid var(--border-default)",
-                  color: "var(--text-muted)",
+                  color: "var(--text-primary)",
                 }}
                 title={
                   isAr
-                    ? "إدارة جميع اللوحات المسماة وصلاحياتها"
-                    : "Manage all named dashboards & permissions"
+                    ? "تعديل اسم اللوحة الحالية وصلاحياتها"
+                    : "Rename active dashboard & edit permissions"
                 }
               >
-                <FolderKanban className="w-3.5 h-3.5" />
-                <span className="hidden md:inline">
-                  {isAr ? "كل اللوحات" : "All Boards"}
-                </span>
-                <span className="font-mono tabular-nums text-[11px]">
-                  ({totalScopedCount || dashboards.length})
-                </span>
+                <Shield
+                  className="w-3.5 h-3.5"
+                  style={{ color: "var(--brand-primary)" }}
+                />
+                <span>{isAr ? "الاسم والصلاحيات" : "Name & Access"}</span>
               </button>
+            )}
 
-              <button
-                type="button"
-                onClick={onOpenCreate}
-                className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 text-white whitespace-nowrap transition hover:opacity-90"
-                style={{ backgroundColor: "var(--brand-primary)" }}
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>{isAr ? "لوحة جديدة" : "New Dashboard"}</span>
-              </button>
-            </>
-          )}
-        </div>
+            {canManage && (
+              <>
+                <button
+                  type="button"
+                  onClick={onOpenDirectory}
+                  className="px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 whitespace-nowrap shrink-0 transition hover:opacity-85"
+                  style={{
+                    backgroundColor: "var(--bg-app)",
+                    border: "1px solid var(--border-default)",
+                    color: "var(--text-muted)",
+                  }}
+                  title={
+                    isAr
+                      ? "إدارة جميع اللوحات المسماة وصلاحياتها"
+                      : "Manage all named dashboards & permissions"
+                  }
+                >
+                  <FolderKanban className="w-3.5 h-3.5" />
+                  <span className="hidden md:inline">
+                    {isAr ? "كل اللوحات" : "All Boards"}
+                  </span>
+                  <span className="font-mono tabular-nums text-[11px]">
+                    ({totalScopedCount || dashboards.length})
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={onOpenCreate}
+                  className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 text-white whitespace-nowrap shrink-0 transition hover:opacity-90"
+                  style={{ backgroundColor: "var(--brand-primary)" }}
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>{isAr ? "لوحة جديدة" : "New Dashboard"}</span>
+                </button>
+              </>
+            )}
+          </div>
+        )
       )}
     </div>
   );

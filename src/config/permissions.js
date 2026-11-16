@@ -11,6 +11,11 @@ export const ALL_PERMISSIONS = {
     icon: "🎛️",
     perms: [
       {
+        key: "dashboard.view",
+        en: "Access & View Main Dashboard",
+        ar: "الوصول وعرض لوحة التحكم الرئيسية",
+      },
+      {
         key: "dashboard.customize",
         en: "Customize Dashboard Widgets & Layout",
         ar: "تخصيص وترتيب بطاقات لوحة التحكم",
@@ -83,6 +88,21 @@ export const ALL_PERMISSIONS = {
         key: "schedule.gendec_no_stamp",
         en: "Print GenDec without Stamp",
         ar: "طباعة الإقرار العام (GenDec) بدون ختم",
+      },
+      {
+        key: "schedule.phone_directory",
+        en: "View Operational Phone Directory",
+        ar: "عرض دليل اتصالات الكادر والأقسام",
+      },
+      {
+        key: "schedule.trip_history",
+        en: "View Trip History & Modification Log",
+        ar: "عرض سجل تاريخ وتعديلات الرحلة (Trip History)",
+      },
+      {
+        key: "schedule.jl_edit",
+        en: "Complete / Edit Journey Log & Night Time",
+        ar: "إكمال وتعديل سجل الرحلة والوقت الليلي (JL)",
       },
     ],
   },
@@ -184,6 +204,11 @@ export const ALL_PERMISSIONS = {
         en: "Print Operational Forms without Stamp",
         ar: "طباعة النماذج التشغيلية بدون ختم",
       },
+      {
+        key: "forms.ai_scanner",
+        en: "AI Smart Form & Document Recognition + Chat",
+        ar: "التعرف الذكي والدردشة بالذكاء الاصطناعي للنماذج",
+      },
     ],
   },
 
@@ -215,6 +240,60 @@ export const ALL_PERMISSIONS = {
     ],
   },
 
+  /* ═══ Commercial & Sales — المبيعات والرحلات العارضة ═══ */
+  sales: {
+    label_en: "Sales & Charter",
+    label_ar: "المبيعات والرحلات العارضة",
+    icon: "💼",
+    perms: [
+      {
+        key: "sales.view",
+        en: "Access Sales & Commercial Module",
+        ar: "الوصول لقسم المبيعات والتجاري",
+      },
+      {
+        key: "sales.dashboard_view",
+        en: "View Sales & Charter Dashboard",
+        ar: "عرض لوحة تحكم وداشبورد المبيعات",
+      },
+      {
+        key: "sales.manage_dashboards",
+        en: "Manage & Customize Sales Dashboards",
+        ar: "تخصيص وإدارة لوحات المبيعات",
+      },
+      {
+        key: "sales.charter_manage",
+        en: "Manage Charter Flight Requests & Orders",
+        ar: "إدارة طلبات وأوامر الرحلات العارضة",
+      },
+      {
+        key: "sales.quote_create",
+        en: "Create & Calculate Charter Quotations",
+        ar: "إنشاء واحتساب عروض أسعار الرحلات",
+      },
+      {
+        key: "sales.dispatch_schedule",
+        en: "Convert & Dispatch Charter to Flight Schedule",
+        ar: "ترحيل الرحلة العارضة إلى جدول الرحلات",
+      },
+      {
+        key: "sales.clients_manage",
+        en: "Manage Charter Clients & Brokers CRM",
+        ar: "إدارة سجل العملاء والوسطاء",
+      },
+      {
+        key: "sales.empty_legs",
+        en: "View & Sell Empty Legs",
+        ar: "عرض وتسويق الرحلات الفارغة (Empty Legs)",
+      },
+      {
+        key: "sales.contracts_invoicing",
+        en: "Manage Contracts & Invoices",
+        ar: "إدارة العقود والفواتير والتحصيل",
+      },
+    ],
+  },
+
   /* ═══ Crew ═══ */
   crew: {
     label_en: "Crew",
@@ -237,6 +316,11 @@ export const ALL_PERMISSIONS = {
         key: "crew.portal",
         en: "Access Crew Portal",
         ar: "الوصول لواجهة الطاقم",
+      },
+      {
+        key: "crew.directory",
+        en: "View Operational Phone Directory",
+        ar: "عرض دليل اتصالات الكادر والأقسام",
       },
     ],
   },
@@ -276,6 +360,31 @@ export const ALL_PERMISSIONS = {
       { key: "portal.ftl", en: "FTL Icon", ar: "أيقونة FTL" },
       { key: "portal.manuals", en: "Manuals Icon", ar: "أيقونة الأدلة والمراجع" },
       { key: "portal.hours", en: "My Hours Icon", ar: "أيقونة ساعاتي" },
+      {
+        key: "portal.operations",
+        en: "Operations Icon (Quick Dispatch)",
+        ar: "أيقونة العمليات السريعة (Operations)",
+      },
+      {
+        key: "portal.operations_manage",
+        en: "Create & Edit Multi-Sector Flights / Crew in Portal",
+        ar: "إضافة وتعديل الرحلات والسكترات والطاقم في البورتال",
+      },
+      {
+        key: "portal.flight_forms",
+        en: "Forms & GenDec Icon",
+        ar: "أيقونة النماذج والجي دي (Forms & GD)",
+      },
+      {
+        key: "portal.flight_forms_download",
+        en: "Download Flight-Linked Forms PDF in Portal",
+        ar: "تحميل النماذج والجي دي المربوطة بالرحلة (PDF) في البورتال",
+      },
+      {
+        key: "portal.journey_log",
+        en: "Journey Log Quick Icon (24H)",
+        ar: "أيقونة سجل الرحلة السريع (Journey Log)",
+      },
       {
         key: "portal.print_with_stamp",
         en: "Print/Export Portal Reports with Official Stamp",
@@ -495,6 +604,16 @@ export const ALL_PERMISSIONS = {
         ar: "تغيير ثيم النظام الموحد",
       },
       {
+        key: "settings.portal_theme",
+        en: "Change Crew Portal Theme",
+        ar: "تغيير ثيم بوابة الطاقم",
+      },
+      {
+        key: "settings.dashboards_manage",
+        en: "Create, Name & Customize Dashboards in Settings",
+        ar: "إنشاء وتسمية وتخصيص لوحات التحكم من الإعدادات",
+      },
+      {
         key: "settings.nav_layout",
         en: "Change Navigation Layout",
         ar: "تغيير تخطيط التنقل",
@@ -515,6 +634,21 @@ export const ALL_PERMISSIONS = {
         key: "settings.positions_edit",
         en: "Edit Positions",
         ar: "تعديل الوظائف",
+      },
+      {
+        key: "settings.airports_manage",
+        en: "Manage Aerodrome Database & Custom Airports",
+        ar: "إدارة وتحديث قاعدة بيانات المطارات والملاحة الجوية",
+      },
+      {
+        key: "settings.flight_statuses_manage",
+        en: "Manage Custom Aircraft & Flight Statuses",
+        ar: "إدارة وتخصيص أوضاع وحالات الطائرات والرحلات",
+      },
+      {
+        key: "settings.header_tools",
+        en: "Configure Top Header Icons & Grouped Menu Order",
+        ar: "تخصيص أيقونات وترتيب أدوات الشريط الرئيسي والقائمة المنسدلة",
       },
       {
         key: "settings.edit",
@@ -612,6 +746,7 @@ export const ROLE_TEMPLATES = {
     color: "sky",
     icon: "📋",
     perms: [
+      "dashboard.view",
       "dashboard.customize",
       "dashboard.quality_view",
       "dashboard.manage_named",
@@ -628,6 +763,9 @@ export const ROLE_TEMPLATES = {
       "schedule.gendec_view",
       "schedule.gendec_stamp",
       "schedule.gendec_no_stamp",
+      "schedule.phone_directory",
+      "schedule.trip_history",
+      "schedule.jl_edit",
       "ftl.view",
       "ftl.edit",
       "reports.view",
@@ -652,6 +790,7 @@ export const ROLE_TEMPLATES = {
       "forms.delete",
       "forms.print_with_stamp",
       "forms.print_without_stamp",
+      "forms.ai_scanner",
       "catering.view",
       "catering.create",
       "catering.edit",
@@ -665,6 +804,7 @@ export const ROLE_TEMPLATES = {
       "crew.docs_download",
       "crew.card",
       "crew.portal",
+      "crew.directory",
       "portal.schedule",
       "portal.completed_flights",
       "portal.completed_flights_edit",
@@ -674,6 +814,11 @@ export const ROLE_TEMPLATES = {
       "portal.manuals",
       "portal.hours",
       "portal.aircraft_status",
+      "portal.operations",
+      "portal.operations_manage",
+      "portal.flight_forms",
+      "portal.flight_forms_download",
+      "portal.journey_log",
       "portal.print_with_stamp",
       "portal.print_without_stamp",
       "manuals.view",
@@ -702,6 +847,15 @@ export const ROLE_TEMPLATES = {
       "training.create",
       "training.edit",
       "training.delete",
+      "sales.view",
+      "sales.dashboard_view",
+      "sales.manage_dashboards",
+      "sales.charter_manage",
+      "sales.quote_create",
+      "sales.dispatch_schedule",
+      "sales.clients_manage",
+      "sales.empty_legs",
+      "sales.contracts_invoicing",
       "tracking.view",
       "charts.view",
       "whatsapp.view",
@@ -723,12 +877,17 @@ export const ROLE_TEMPLATES = {
       "settings.appearance_view",
       "settings.appearance_edit",
       "settings.global_theme",
+      "settings.portal_theme",
+      "settings.dashboards_manage",
       "settings.nav_layout",
       "settings.tab_prefs",
       "settings.sounds_view",
       "settings.sounds_edit",
       "settings.positions_view",
       "settings.positions_edit",
+      "settings.airports_manage",
+      "settings.flight_statuses_manage",
+      "settings.header_tools",
       "settings.edit",
       "alerts.view",
       "alerts.dismiss",
@@ -750,6 +909,7 @@ export const ROLE_TEMPLATES = {
     color: "amber",
     icon: "✈️",
     perms: [
+      "dashboard.view",
       "dashboard.customize",
       "dashboard.quality_view",
       "quality.view",
@@ -758,6 +918,9 @@ export const ROLE_TEMPLATES = {
       "schedule.view",
       "schedule.gendec_view",
       "schedule.gendec_no_stamp",
+      "schedule.phone_directory",
+      "schedule.trip_history",
+      "schedule.jl_edit",
       "ftl.view",
       "reports.view",
       "reports.export",
@@ -779,6 +942,7 @@ export const ROLE_TEMPLATES = {
       "crew.docs",
       "crew.docs_download",
       "crew.portal",
+      "crew.directory",
       "portal.schedule",
       "portal.completed_flights",
       "portal.completed_flights_edit",
@@ -788,6 +952,9 @@ export const ROLE_TEMPLATES = {
       "portal.manuals",
       "portal.hours",
       "portal.aircraft_status",
+      "portal.flight_forms",
+      "portal.flight_forms_download",
+      "portal.journey_log",
       "portal.print_without_stamp",
       "manuals.view",
       "roster.view",
@@ -819,6 +986,7 @@ export const ROLE_TEMPLATES = {
     color: "purple",
     icon: "🔧",
     perms: [
+      "dashboard.view",
       "dashboard.customize",
       "dashboard.quality_view",
       "quality.view",
@@ -881,6 +1049,7 @@ export const ROLE_TEMPLATES = {
       "settings.view_stamp",
       "settings.edit_stamp",
       "settings.appearance_view",
+      "settings.dashboards_manage",
       "settings.sounds_view",
       "alerts.view",
       "alerts.dismiss",
@@ -894,6 +1063,7 @@ export const ROLE_TEMPLATES = {
     color: "emerald",
     icon: "👤",
     perms: [
+      "dashboard.view",
       "dashboard.customize",
       "schedule.view",
       "ftl.view",
@@ -1081,6 +1251,10 @@ export const PORTAL_SCHEMA_MARKER = "portal._v2";
 export const PRINT_SCHEMA_MARKER = "portal._print_v1";
 export const QUALITY_SCHEMA_MARKER = "quality._v1";
 export const OPS_V2_SCHEMA_MARKER = "quality._v2";
+export const OPS_V3_SCHEMA_MARKER = "ops._v3";
+export const OPS_V4_SCHEMA_MARKER = "portal._ops_v4";
+export const OPS_V5_SCHEMA_MARKER = "ops._v5";
+export const OPS_V6_SCHEMA_MARKER = "ops._v6";
 
 export const PORTAL_DEFAULT_VIEW_PERMS = [
   "portal.schedule",
@@ -1113,13 +1287,23 @@ const _normalizeRole = (s) =>
     .trim()
     .toLowerCase();
 
+const _DEPRECATED_PERM_KEYS = new Set([
+  "reports.export_stamp",
+  "operations.view",
+  "operations.manage",
+  "flight_forms.view",
+  "flight_forms.download",
+  "schedule.journey_log",
+]);
+
 export const stripInternalPermMarkers = (perms) =>
   _parsePerms(perms).filter(
     (p) =>
       typeof p === "string" &&
       !p.startsWith("portal._") &&
       !p.startsWith("quality._") &&
-      p !== "reports.export_stamp"
+      !p.startsWith("ops._") &&
+      !_DEPRECATED_PERM_KEYS.has(p)
   );
 
 export const markPortalSchemaSaved = (perms) => {
@@ -1132,6 +1316,10 @@ export const markPortalSchemaSaved = (perms) => {
       PRINT_SCHEMA_MARKER,
       QUALITY_SCHEMA_MARKER,
       OPS_V2_SCHEMA_MARKER,
+      OPS_V3_SCHEMA_MARKER,
+      OPS_V4_SCHEMA_MARKER,
+      OPS_V5_SCHEMA_MARKER,
+      OPS_V6_SCHEMA_MARKER,
     ])
   );
 };
@@ -1314,6 +1502,138 @@ export const upgradeLegacyPortalPerms = (rawPerms, roleName = "") => {
     }
   }
 
+  if (!perms.includes(OPS_V4_SCHEMA_MARKER)) {
+    const combinedV4 = new Set([...perms, ...additions]);
+    if (combinedV4.has("operations.view")) {
+      additions.push("portal.operations");
+    }
+    if (combinedV4.has("operations.manage")) {
+      additions.push("portal.operations", "portal.operations_manage");
+    }
+    if (combinedV4.has("flight_forms.view")) {
+      additions.push("portal.flight_forms");
+    }
+    if (combinedV4.has("flight_forms.download")) {
+      additions.push("portal.flight_forms", "portal.flight_forms_download");
+    }
+    if (combinedV4.has("schedule.journey_log")) {
+      additions.push("portal.journey_log");
+    }
+    if (
+      combinedV4.has("schedule.create") ||
+      combinedV4.has("schedule.edit") ||
+      roleNorm === "dispatcher"
+    ) {
+      additions.push(
+        "portal.operations",
+        "portal.operations_manage",
+        "portal.flight_forms",
+        "portal.flight_forms_download",
+        "portal.journey_log"
+      );
+    }
+    if (
+      combinedV4.has("portal.completed_flights_edit") ||
+      roleNorm === "captain"
+    ) {
+      additions.push(
+        "portal.journey_log",
+        "portal.flight_forms",
+        "portal.flight_forms_download"
+      );
+    }
+  }
+
+  if (!perms.includes(OPS_V5_SCHEMA_MARKER)) {
+    const combinedV5 = new Set([...perms, ...additions]);
+
+    if (
+      combinedV5.has("schedule.view") ||
+      combinedV5.has("dashboard.customize") ||
+      combinedV5.has("dashboard.quality_view")
+    ) {
+      additions.push("dashboard.view");
+    }
+
+    if (combinedV5.has("schedule.view")) {
+      additions.push("schedule.trip_history");
+    }
+
+    if (
+      combinedV5.has("schedule.edit") ||
+      combinedV5.has("portal.completed_flights_edit") ||
+      ["dispatcher", "captain"].includes(roleNorm)
+    ) {
+      additions.push("schedule.jl_edit");
+    }
+
+    if (
+      combinedV5.has("dashboard.manage_named") ||
+      combinedV5.has("quality.manage_dashboards") ||
+      combinedV5.has("camo.manage_dashboards") ||
+      combinedV5.has("training.manage_dashboards") ||
+      combinedV5.has("settings.edit") ||
+      combinedV5.has("users.perms") ||
+      roleNorm === "dispatcher"
+    ) {
+      additions.push("settings.dashboards_manage");
+    }
+
+    if (
+      combinedV5.has("forms.create") ||
+      combinedV5.has("forms.edit") ||
+      combinedV5.has("permits.create") ||
+      combinedV5.has("permits.edit") ||
+      roleNorm === "dispatcher"
+    ) {
+      additions.push("forms.ai_scanner");
+    }
+
+    if (combinedV5.has("settings.appearance_edit")) {
+      additions.push("settings.portal_theme");
+    }
+
+    if (
+      combinedV5.has("settings.general_edit") ||
+      combinedV5.has("settings.edit") ||
+      roleNorm === "dispatcher"
+    ) {
+      additions.push(
+        "settings.airports_manage",
+        "settings.flight_statuses_manage",
+        "settings.header_tools"
+      );
+    }
+
+    if (["dispatcher", "captain"].includes(roleNorm)) {
+      additions.push("schedule.phone_directory", "crew.directory");
+    }
+  }
+
+  if (!perms.includes(OPS_V6_SCHEMA_MARKER)) {
+    const combinedV6 = new Set([...perms, ...additions]);
+
+    if (
+      combinedV6.has("schedule.view") ||
+      combinedV6.has("dashboard.view") ||
+      roleNorm === "dispatcher"
+    ) {
+      additions.push("sales.view", "sales.dashboard_view");
+    }
+
+    if (roleNorm === "dispatcher") {
+      additions.push(
+        "sales.manage_dashboards",
+        "sales.charter_manage",
+        "sales.quote_create",
+        "sales.dispatch_schedule",
+        "sales.clients_manage",
+        "sales.empty_legs",
+        "sales.contracts_invoicing"
+      );
+    }
+  }
+
   return Array.from(new Set([...perms, ...additions]));
 };
 
@@ -1328,12 +1648,16 @@ const _ADMIN_ALIASES = [
 ];
 
 const _BASIC_PERMS = [
+  "dashboard.view",
   "dashboard.customize",
   "dashboard.quality_view",
   "quality.view",
   "quality.dashboard_view",
   "quality.audits_view",
+  "sales.view",
+  "sales.dashboard_view",
   "schedule.view",
+  "schedule.trip_history",
   "fleet.view",
   "crew.view",
   "ftl.view",
@@ -1350,6 +1674,8 @@ const _BASIC_PERMS = [
   "alerts.view",
   "users.view",
   "crew.portal",
+  "schedule.phone_directory",
+  "crew.directory",
   "settings.general_view",
   "settings.appearance_view",
   "settings.sounds_view",

@@ -47,6 +47,36 @@ import {
   XCircle,
   Wrench,
   RefreshCw,
+  Smartphone,
+  Volume2,
+  Trash2,
+  PhoneCall,
+  CalendarDays,
+  Compass,
+  Gauge,
+  LayoutDashboard,
+  FileSignature,
+  BadgeCheck,
+  Coffee,
+  Package,
+  Boxes,
+  ShoppingBag,
+  Navigation,
+  GraduationCap,
+  Hourglass,
+  Book,
+  Folder,
+  Bookmark,
+  BarChart3,
+  Zap,
+  Layers,
+  Grid,
+  List,
+  Layout,
+  Shield,
+  PlaneTakeoff,
+  FileCheck2,
+  ClipboardCheck,
 } from "lucide-react";
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import { pdfSafe } from "../utils/pdf";
@@ -72,7 +102,10 @@ import { FTLModule } from "./FTLModule";
 import { ManualsModule } from "./ManualsModule";
 import { CalendarView } from "./CalendarView";
 import { CateringModule } from "./CateringModule";
+import { OperationsQuickHub } from "./OperationsQuickHub";
+import { FlightFormsGdHub } from "./FlightFormsGdHub";
 import { CompleteFlightModal } from "../components/CompleteFlightModal";
+import { PhoneDirectoryModal } from "../components/PhoneDirectoryModal";
 import { ThreeDIcon } from "../components/ui/ThreeDIcon";
 import { computeAutoStatus } from "./ScheduleBoard";
 import {
@@ -83,11 +116,13 @@ import {
   fmtDuty,
   safeArray,
 } from "../utils/helpers";
-import { getGlobalTheme, DEFAULT_GLOBAL_THEME } from "../config/constants";
+import { getGlobalTheme, DEFAULT_GLOBAL_THEME, calcFdpLimit, fmtDutyHM } from "../config/constants";
 import {
   subscribeToNotifications,
   markNotificationRead,
   markAllNotificationsRead,
+  deleteNotification,
+  deleteAllNotifications,
 } from "../utils/notificationService";
 import { alertNotification } from "../utils/sounds";
 import {
@@ -108,6 +143,52 @@ const POS_SHORT_MAP = {
   security: "SEC",
   loadmaster: "LMC",
   flightDispatcher: "FD",
+};
+
+/* ⭐ خريطة ربط أسماء الأيقونات بالأصناف */
+const LUCIDE_ICON_MAP = {
+  Home,
+  Compass,
+  Gauge,
+  LayoutDashboard,
+  Sparkles,
+  Calendar,
+  CalendarDays,
+  Clock,
+  List,
+  Layout,
+  CheckCircle2,
+  ShieldCheck,
+  FileSignature,
+  BadgeCheck,
+  Award,
+  UtensilsCrossed,
+  Coffee,
+  Package,
+  Boxes,
+  ShoppingBag,
+  Plane,
+  Wrench,
+  Activity,
+  Navigation,
+  FileText,
+  Shield,
+  GraduationCap,
+  Timer,
+  Hourglass,
+  Bell,
+  BookOpen,
+  Book,
+  Folder,
+  Bookmark,
+  TrendingUp,
+  BarChart3,
+  Zap,
+  Layers,
+  Grid,
+  PlaneTakeoff,
+  FileCheck2,
+  ClipboardCheck,
 };
 
 const POS_ORDER = [
@@ -275,6 +356,7 @@ export function CrewPortal({
     new Date().toISOString().slice(0, 10)
   );
   const [selectedFlight, setSelectedFlight] = useState(null);
+  const [directoryOpen, setDirectoryOpen] = useState(false);
 
   const { firebaseUser, authReady, signInWithGoogle } = useFirebase();
 
@@ -287,8 +369,38 @@ export function CrewPortal({
       ? Notification.permission
       : "unsupported"
   );
+  const [floatingAlert, setFloatingAlert] = useState(null);
+  const floatingAlertTimerRef = React.useRef(null);
+  const [showIosHelp, setShowIosHelp] = useState(false);
   const seenUnreadIdsRef = React.useRef(new Set());
   const initialNotifToastShownRef = React.useRef(false);
+
+  const isIos = useMemo(() => {
+    if (typeof window === "undefined" || typeof navigator === "undefined") return false;
+    return (
+      /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+    );
+  }, []);
+
+  const isStandalone = useMemo(() => {
+    if (typeof window === "undefined") return false;
+    return (
+      window.matchMedia("(display-mode: standalone)").matches ||
+      window.navigator.standalone === true
+    );
+  }, []);
+
+  const triggerFloatingAlert = (notif) => {
+    if (!notif) return;
+    if (floatingAlertTimerRef.current) {
+      clearTimeout(floatingAlertTimerRef.current);
+    }
+    setFloatingAlert(notif);
+    floatingAlertTimerRef.current = setTimeout(() => {
+      setFloatingAlert(null);
+    }, 10000);
+  };
 
   const handleEnableLockscreenNotifs = async () => {
     const res = await requestBrowserNotificationPermission();
@@ -298,8 +410,8 @@ export function CrewPortal({
     if (res === "granted") {
       showToast(
         isAr
-          ? "✅ تم تفعيل إشعارات الشاشة المقفلة بنجاح!"
-          : "✅ Lock screen notifications enabled!",
+          ? "✅ تم تفعيل إشعارات الهاتف والشاشة المقفلة بنجاح!"
+          : "✅ Mobile & lock screen notifications enabled!",
         "success"
       );
     } else if (res === "denied") {
@@ -312,7 +424,26 @@ export function CrewPortal({
     }
   };
 
-  const handleTestLockscreenNotif = async () => {
+  const handleTestLockscreenNotif = async (delaySeconds = 0) => {
+    if (delaySeconds > 0) {
+      showToast(
+        isAr
+          ? `⏳ سيتم إرسال الإشعار بعد ${delaySeconds} ثوانٍ. اقفل شاشة هاتفك الآن لتجربته!`
+          : `⏳ Notification sending in ${delaySeconds}s. Lock your phone screen now!`,
+        "info"
+      );
+      setTimeout(async () => {
+        await triggerLockscreenNotification({
+          title: isAr ? "📲 تجربة إشعار الشاشة المقفلة" : "📲 Lock Screen Test Alert",
+          body: isAr
+            ? "نجاح! يظهر الإشعار بنجاح على شاشة هاتفك المقفلة مع التنبيه الصوتي والاهتزاز."
+            : "Success! Notification appears on your lock screen with sound and vibration.",
+          category: "test",
+        });
+      }, delaySeconds * 1000);
+      return;
+    }
+
     const res = await triggerLockscreenNotification({
       title: isAr ? "📲 تجربة إشعار الشاشة المقفلة" : "📲 Lock Screen Test Alert",
       body: isAr
@@ -375,6 +506,9 @@ export function CrewPortal({
   const [editingCompletedFlight, setEditingCompletedFlight] = useState(null);
   const [quickCompleteFlightId, setQuickCompleteFlightId] = useState("");
   const [busyCompletedPdf, setBusyCompletedPdf] = useState(false);
+  const [formsHubFlightId, setFormsHubFlightId] = useState(null);
+  const [jlSearch, setJlSearch] = useState("");
+  const [jlFilterMode, setJlFilterMode] = useState("all");
 
   /* ═══ Personal Password Change (Current Member Only) ═══ */
   const [passwordModalOpen, setPasswordModalOpen] = useState(false);
@@ -699,14 +833,33 @@ export function CrewPortal({
       canSeeManuals:
         previewCrewPortal || checkPerm(targetUser, "portal.manuals"),
       canSeeHours: previewCrewPortal || checkPerm(targetUser, "portal.hours"),
+      canSeeOperations:
+        previewCrewPortal ||
+        checkPerm(targetUser, "portal.operations") ||
+        checkPerm(targetUser, "portal.operations_manage"),
+      canManageOperations:
+        previewCrewPortal ||
+        checkPerm(targetUser, "portal.operations_manage") ||
+        checkPerm(targetUser, "schedule.create") ||
+        checkPerm(targetUser, "schedule.edit"),
+      canSeeFlightForms:
+        previewCrewPortal ||
+        checkPerm(targetUser, "portal.flight_forms") ||
+        checkPerm(targetUser, "portal.flight_forms_download"),
+      canSeeJourneyLog:
+        previewCrewPortal ||
+        checkPerm(targetUser, "portal.journey_log") ||
+        checkPerm(targetUser, "portal.completed_flights_edit"),
       canViewAllCompleted:
         previewCrewPortal ||
         checkPerm(targetUser, "reports.view_all") ||
-        checkPerm(targetUser, "schedule.edit"),
+        checkPerm(targetUser, "schedule.edit") ||
+        checkPerm(targetUser, "portal.operations_manage"),
       canEditCompleted:
         previewCrewPortal ||
         checkPerm(targetUser, "schedule.edit") ||
-        checkPerm(targetUser, "portal.completed_flights_edit"),
+        checkPerm(targetUser, "portal.completed_flights_edit") ||
+        checkPerm(targetUser, "portal.journey_log"),
       canExportCompletedStamp:
         previewCrewPortal || checkPerm(targetUser, "portal.print_with_stamp"),
       canExportCompletedNoStamp:
@@ -721,6 +874,10 @@ export function CrewPortal({
         previewCrewPortal || checkPerm(targetUser, "catering.edit"),
       canCateringDelete:
         previewCrewPortal || checkPerm(targetUser, "catering.delete"),
+      canSeeDirectory:
+        previewCrewPortal ||
+        checkPerm(targetUser, "crew.directory") ||
+        checkPerm(targetUser, "schedule.phone_directory"),
     };
   }, [previewCrewPortal, targetUser, roles]);
 
@@ -733,6 +890,10 @@ export function CrewPortal({
     canSeeFTL,
     canSeeManuals,
     canSeeHours,
+    canSeeOperations,
+    canManageOperations,
+    canSeeFlightForms,
+    canSeeJourneyLog,
     canViewAllCompleted,
     canEditCompleted,
     canExportCompletedPdf,
@@ -741,7 +902,12 @@ export function CrewPortal({
     canCateringCreate,
     canCateringEdit,
     canCateringDelete,
+    canSeeDirectory,
   } = portalPerms;
+
+  const portalIconStyle = settings?.portalIconStyle || "vector3d";
+  const portalWatermarkLogo = settings?.portalWatermarkLogo || settings?.logo || "";
+  const portalWatermarkOpacity = settings?.portalWatermarkOpacity ?? 0.18;
 
   useEffect(() => {
     if (!canViewAllCompleted) {
@@ -763,6 +929,9 @@ export function CrewPortal({
       ftl: canSeeFTL,
       manuals: canSeeManuals,
       hours: canSeeHours,
+      operations: canSeeOperations,
+      "flight-forms": canSeeFlightForms,
+      "journey-log": canSeeJourneyLog,
     };
     if (permByView[activeView] === false) {
       setActiveView(null);
@@ -777,6 +946,9 @@ export function CrewPortal({
     canSeeFTL,
     canSeeManuals,
     canSeeHours,
+    canSeeOperations,
+    canSeeFlightForms,
+    canSeeJourneyLog,
   ]);
 
   const hasCrewLink = !!(foundCrew?.id || targetUser?.crewId || user?.crewId);
@@ -823,13 +995,23 @@ export function CrewPortal({
         if (newlyArrived.length > 0) {
           alertNotification();
           const newest = newlyArrived[0];
+          triggerFloatingAlert(newest);
+
+          if (typeof navigator !== "undefined" && navigator.vibrate) {
+            try {
+              navigator.vibrate([300, 150, 300, 150, 450]);
+            } catch (_) {}
+          }
+
           if (!initialNotifToastShownRef.current || newlyArrived.length >= 1) {
             initialNotifToastShownRef.current = true;
             showToast(`🔔 ${newest.message}`, "info");
           }
           // Push to mobile OS lock screen
           triggerLockscreenNotification({
-            title: newest.flightNo ? `تحديث الرحلة ${newest.flightNo}` : "AeroOps Crew Portal",
+            title: newest.flightNo
+              ? (isAr ? `✈️ تحديث الرحلة ${newest.flightNo}` : `✈️ Flight Alert: ${newest.flightNo}`)
+              : (isAr ? "📲 تنبيه عمليات بوابة الطاقم" : "📲 AeroOps Crew Portal Alert"),
             body: newest.message,
             category: "flight",
           });
@@ -848,26 +1030,42 @@ export function CrewPortal({
     activeCrewUsername,
     authReady,
     firebaseUser?.uid,
+    isAr,
   ]);
 
-  /* Background flight schedule sync for Crew Portal */
+  /* Background flight schedule sync for Crew Portal (runs foreground & background) */
   useEffect(() => {
     if (typeof reloadFlights !== "function") return;
     const syncFlights = () => {
-      if (
-        typeof document !== "undefined" &&
-        document.visibilityState !== "visible"
-      ) {
-        return;
-      }
       if (hasPendingSheetMutations()) return;
       reloadFlights().catch(() => {});
     };
-    const timer = setInterval(syncFlights, 20000);
+
+    let intervalMs =
+      typeof document !== "undefined" && document.visibilityState === "hidden"
+        ? 30000
+        : 15000;
+    let timer = setInterval(syncFlights, intervalMs);
+
+    const handleVisibility = () => {
+      clearInterval(timer);
+      if (document.visibilityState === "visible") {
+        syncFlights();
+        timer = setInterval(syncFlights, 15000);
+      } else {
+        timer = setInterval(syncFlights, 30000);
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibility);
     window.addEventListener("focus", syncFlights);
+    window.addEventListener("online", syncFlights);
+
     return () => {
       clearInterval(timer);
+      document.removeEventListener("visibilitychange", handleVisibility);
       window.removeEventListener("focus", syncFlights);
+      window.removeEventListener("online", syncFlights);
     };
   }, [reloadFlights]);
 
@@ -1667,58 +1865,86 @@ export function CrewPortal({
     );
     return POS_SHORT_MAP[slot?.position] || slot?.position || "—";
   };
+  const getResolvedIcon = (tabId, defaultIcon) => {
+    const customName = settings?.portalCustomIcons?.[tabId];
+    if (customName && LUCIDE_ICON_MAP[customName]) {
+      return LUCIDE_ICON_MAP[customName];
+    }
+    return defaultIcon;
+  };
 
   const navItems = [
-    { id: "home", icon: Home, threeDIcon: "home", label: isAr ? "الرئيسية" : "Home", show: true },
+    { id: "home", icon: getResolvedIcon("home", Home), threeDIcon: "home", label: isAr ? "الرئيسية" : "Home", show: true },
     {
       id: "schedule",
-      icon: Calendar,
+      icon: getResolvedIcon("schedule", Calendar),
       threeDIcon: "schedule",
       label: isAr ? "جدولي" : "My Schedule",
       show: canSeeSchedule,
     },
     {
       id: "completed-flights",
-      icon: CheckCircle2,
+      icon: getResolvedIcon("completed-flights", CheckCircle2),
       threeDIcon: "completed-flights",
       label: isAr ? "الرحلات المكتملة" : "Completed Flights",
       show: canSeeCompletedFlights,
     },
     {
       id: "catering",
-      icon: UtensilsCrossed,
+      icon: getResolvedIcon("catering", UtensilsCrossed),
       threeDIcon: "catering",
       label: isAr ? "التموين" : "Catering",
       show: canSeeCatering,
     },
     {
       id: "aircraft-status",
-      icon: Plane,
+      icon: getResolvedIcon("aircraft-status", Plane),
       threeDIcon: "aircraft-status",
       label: isAr ? "حالة طائرتي" : "My Aircraft",
       show: canSeeAircraft,
     },
     {
       id: "certificates",
-      icon: Award,
+      icon: getResolvedIcon("certificates", Award),
       threeDIcon: "certificates",
       label: isAr ? "الشهادات والمرفقات" : "Certificates",
       show: canSeeCerts,
     },
-    { id: "ftl", icon: Clock, threeDIcon: "ftl", label: "FTL", show: canSeeFTL },
+    { id: "ftl", icon: getResolvedIcon("ftl", Clock), threeDIcon: "ftl", label: "FTL", show: canSeeFTL },
     {
       id: "manuals",
-      icon: BookOpen,
+      icon: getResolvedIcon("manuals", BookOpen),
       threeDIcon: "manuals",
       label: isAr ? "الأدلة والمراجع" : "Manuals",
       show: canSeeManuals,
     },
     {
       id: "hours",
-      icon: TrendingUp,
+      icon: getResolvedIcon("hours", TrendingUp),
       threeDIcon: "hours",
       label: isAr ? "ساعاتي" : "My Hours",
       show: canSeeHours,
+    },
+    {
+      id: "operations",
+      icon: getResolvedIcon("operations", PlaneTakeoff),
+      threeDIcon: "operations",
+      label: isAr ? "العمليات السريعة" : "Operations",
+      show: canSeeOperations,
+    },
+    {
+      id: "flight-forms",
+      icon: getResolvedIcon("flight-forms", FileCheck2),
+      threeDIcon: "flight-forms",
+      label: isAr ? "النماذج والجي دي" : "Forms & GD",
+      show: canSeeFlightForms,
+    },
+    {
+      id: "journey-log",
+      icon: getResolvedIcon("journey-log", ClipboardCheck),
+      threeDIcon: "journey-log",
+      label: isAr ? "سجل الرحلة (JL)" : "Journey Log",
+      show: canSeeJourneyLog,
     },
   ];
 
@@ -1730,7 +1956,10 @@ export function CrewPortal({
     canSeeCerts ||
     canSeeFTL ||
     canSeeManuals ||
-    canSeeHours;
+    canSeeHours ||
+    canSeeOperations ||
+    canSeeFlightForms ||
+    canSeeJourneyLog;
 
   const viewTitleMap = {
     schedule: isAr ? "جدول رحلاتي" : "My Schedule",
@@ -1741,6 +1970,9 @@ export function CrewPortal({
     ftl: isAr ? "ساعات الخدمة والراحة (FTL)" : "Flight Time Limitations (FTL)",
     manuals: isAr ? "الأدلة والمراجع" : "Manuals & Library",
     hours: isAr ? "إحصائيات ساعاتي" : "My Hours",
+    operations: isAr ? "العمليات السريعة وإدارة السكترات" : "Quick Operations Hub",
+    "flight-forms": isAr ? "النماذج والإقرار العام (Forms & GD)" : "Flight Forms & GenDec Hub",
+    "journey-log": isAr ? "سجل الرحلة الفعلي (Journey Log 24H)" : "Journey Log (24H UTC)",
   };
 
   /* Flights available in Quick 24H Complete dropdown */
@@ -1754,6 +1986,23 @@ export function CrewPortal({
         new Date(b.std || 0).getTime() - new Date(a.std || 0).getTime()
     );
   }, [canViewAllCompleted, targetUser, flights, myFlights]);
+
+  const journeyLogFlights = useMemo(() => {
+    const q = jlSearch.trim().toLowerCase();
+    return quickCompletableFlights.filter((f) => {
+      const done = isFlightCompleted(f);
+      if (jlFilterMode === "pending" && done) return false;
+      if (jlFilterMode === "completed" && !done) return false;
+      if (!q) return true;
+      return (
+        String(f.flightNo || "").toLowerCase().includes(q) ||
+        String(f.dep || "").toLowerCase().includes(q) ||
+        String(f.arr || "").toLowerCase().includes(q) ||
+        String(f.acft || "").toLowerCase().includes(q) ||
+        String(f.std || "").slice(0, 10).includes(q)
+      );
+    });
+  }, [quickCompletableFlights, jlSearch, jlFilterMode]);
 
   return (
     <div
@@ -1770,6 +2019,80 @@ export function CrewPortal({
           {isAr
             ? "وضع المعاينة لبوابة الطاقم (Admin Preview)"
             : "Crew Portal Preview Mode (Admin Preview)"}
+        </div>
+      )}
+
+      {/* ═══ Floating In-App Heads-Up Alert (Mobile & Desktop) ═══ */}
+      {floatingAlert && (
+        <div
+          className="fixed top-3 inset-x-3 sm:inset-x-auto sm:right-6 sm:w-96 z-[99999] p-3.5 rounded-2xl shadow-2xl border backdrop-blur-xl transition-all duration-300 animate-in slide-in-from-top-4"
+          style={{
+            backgroundColor: darkMode ? "rgba(15, 23, 42, 0.96)" : "rgba(255, 255, 255, 0.97)",
+            borderColor: THEME.accent || "#3b82f6",
+            boxShadow: "0 20px 45px -10px rgba(0,0,0,0.5), 0 0 25px rgba(59, 130, 246, 0.35)",
+          }}
+          role="alert"
+        >
+          <div className="flex items-start gap-3">
+            <div
+              className="w-10 h-10 rounded-xl flex items-center justify-center text-white shrink-0 shadow-lg animate-pulse"
+              style={{ background: THEME.gradient || "linear-gradient(135deg, #2563eb, #1d4ed8)" }}
+            >
+              <Bell className="w-5 h-5" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-blue-500/20 text-blue-500 border border-blue-500/30">
+                  {floatingAlert.flightNo ? `✈️ ${floatingAlert.flightNo}` : (isAr ? "إشعار فوري" : "Live Alert")}
+                </span>
+                <span className="text-[10px] text-gray-400 font-mono">
+                  {new Date().toLocaleTimeString(isAr ? "ar-SA" : "en-US", { hour: "2-digit", minute: "2-digit" })}
+                </span>
+              </div>
+              <p className="text-xs font-bold mt-1.5 leading-snug break-words" style={{ color: THEME.text }}>
+                {floatingAlert.message}
+              </p>
+              <div className="flex items-center gap-2 mt-3">
+                {canSeeSchedule && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      markNotificationRead(floatingAlert);
+                      setFloatingAlert(null);
+                      setActiveView("schedule");
+                    }}
+                    className="px-3 py-1.5 rounded-lg text-xs font-bold text-white shadow-sm flex items-center gap-1.5 transition hover:opacity-90 active:scale-95"
+                    style={{ background: THEME.gradient }}
+                  >
+                    <Calendar className="w-3.5 h-3.5" />
+                    <span>{isAr ? "عرض جدولي" : "View Schedule"}</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    markNotificationRead(floatingAlert);
+                    setFloatingAlert(null);
+                  }}
+                  className="px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition hover:bg-black/5 dark:hover:bg-white/5"
+                  style={{
+                    borderColor: THEME.borderLight,
+                    color: THEME.textMuted,
+                  }}
+                >
+                  {isAr ? "تم الإطلاع" : "Dismiss"}
+                </button>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setFloatingAlert(null)}
+              className="p-1 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition"
+              aria-label="Close alert"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       )}
 
@@ -1842,6 +2165,23 @@ export function CrewPortal({
             </button>
           )}
 
+          {canSeeDirectory && (
+            <button
+              type="button"
+              onClick={() => setDirectoryOpen(true)}
+              className="p-2 rounded-lg border transition flex items-center justify-center"
+              style={{
+                backgroundColor: THEME.surfaceSubtle,
+                borderColor: THEME.borderLight,
+                color: THEME.text,
+              }}
+              title={isAr ? "دليل الاتصالات التشغيلي" : "Operational Directory"}
+              aria-label="Operational Directory"
+            >
+              <PhoneCall className="w-4 h-4 text-emerald-500" />
+            </button>
+          )}
+
           <div className="relative">
             <button
               onClick={() => setNotifOpen((o) => !o)}
@@ -1874,169 +2214,137 @@ export function CrewPortal({
                   onClick={() => setNotifOpen(false)}
                 />
                 <div
-                  className="absolute end-0 mt-2 w-80 sm:w-96 max-h-[75vh] flex flex-col rounded-xl shadow-2xl z-50 overflow-hidden"
+                  className="absolute end-0 mt-2 w-80 sm:w-96 max-h-[75vh] flex flex-col rounded-2xl shadow-2xl z-50 overflow-hidden border backdrop-blur-xl"
                   style={{
                     backgroundColor: THEME.card,
-                    border: `1px solid ${THEME.borderLight}`,
+                    borderColor: THEME.borderLight,
                     color: THEME.text,
+                    boxShadow: "0 20px 40px -10px rgba(0,0,0,0.35)",
                   }}
                 >
+                  {/* Clean Header with Mark All Read & Clear All */}
                   <div
-                    className="px-4 py-3 flex items-center justify-between gap-2"
-                    style={{ borderBottom: `1px solid ${THEME.borderLight}` }}
+                    className="px-4 py-3 flex items-center justify-between gap-2 border-b"
+                    style={{ borderColor: THEME.borderLight }}
                   >
                     <div className="font-bold text-sm flex items-center gap-2">
-                      <Bell className="w-4 h-4" style={{ color: THEME.accent }} />
+                      <Bell className="w-4 h-4 text-sky-500" />
                       <span>{isAr ? "الإشعارات" : "Notifications"}</span>
-                      {unreadNotificationsCount > 0 && (
-                        <span className="px-1.5 py-0.5 rounded bg-rose-500 text-white text-[10px] font-mono tabular-nums">
+                      {unreadNotificationsCount > 0 ? (
+                        <span className="px-2 py-0.5 rounded-full bg-sky-500 text-white text-[10px] font-mono tabular-nums font-bold">
                           {unreadNotificationsCount}
                         </span>
-                      )}
-                    </div>
-                    {unreadNotificationsCount > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => markAllNotificationsRead(notifications)}
-                        className="text-[11px] font-semibold flex items-center gap-1 hover:underline"
-                        style={{ color: THEME.accent }}
-                      >
-                        <CheckCheck className="w-3.5 h-3.5" />
-                        {isAr ? "تحديد الكل كمقروء" : "Mark all read"}
-                      </button>
-                    )}
-                  </div>
-
-                  <div
-                    className="px-4 py-2 flex items-center justify-between gap-2 text-[11px]"
-                    style={{
-                      backgroundColor: THEME.bg,
-                      borderBottom: `1px solid ${THEME.borderLight}`,
-                    }}
-                  >
-                    <span
-                      className="flex items-center gap-1.5"
-                      style={{ color: THEME.textMuted }}
-                    >
-                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                      {isAr
-                        ? "مزامنة مباشرة عبر Google Sheets"
-                        : "Live Sync via Google Sheets"}
-                    </span>
-                    <button
-                      type="button"
-                      disabled={syncingNotifs}
-                      onClick={refreshPortalNotifications}
-                      className="px-2.5 py-1 rounded-lg text-white font-bold flex items-center gap-1 text-[11px] whitespace-nowrap disabled:opacity-60"
-                      style={{ background: THEME.gradient }}
-                    >
-                      <RefreshCw
-                        className={`w-3 h-3 ${syncingNotifs ? "animate-spin" : ""}`}
-                      />
-                      {isAr ? "تحديث" : "Sync"}
-                    </button>
-                  </div>
-
-                  {/* Lock Screen Push Notification Action Card */}
-                  <div
-                    className="px-3.5 py-2.5 border-b space-y-2"
-                    style={{
-                      backgroundColor: THEME.surfaceSubtle,
-                      borderColor: THEME.borderLight,
-                    }}
-                  >
-                    <div className="flex items-center justify-between text-xs font-bold">
-                      <span className="flex items-center gap-1.5" style={{ color: THEME.text }}>
-                        <Bell className="w-3.5 h-3.5 text-sky-500" />
-                        {isAr ? "إشعارات الهاتف والشاشة المقفلة:" : "Mobile & Lock Screen Push Alerts:"}
-                      </span>
-                      {notifPerm === "granted" ? (
-                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-mono font-bold">
-                          🟢 {isAr ? "مفعّلة" : "Enabled"}
-                        </span>
                       ) : (
-                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-600 dark:text-rose-400 font-mono font-bold">
-                          🔴 {isAr ? "غير مفعّلة" : "Disabled"}
-                        </span>
+                        notifications.length > 0 && (
+                          <span className="px-2 py-0.5 rounded-full bg-gray-500/20 text-gray-500 text-[10px] font-mono tabular-nums font-bold">
+                            {notifications.length}
+                          </span>
+                        )
                       )}
                     </div>
-
-                    {typeof navigator !== "undefined" &&
-                      /iphone|ipad|ipod/.test(navigator.userAgent.toLowerCase()) &&
-                      !(window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone) && (
-                        <div className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-700 dark:text-amber-300 leading-tight">
-                          💡 <strong>أجهزة iPhone:</strong> تتيح شركة Apple الإشعارات عند اختيار <strong>"مشاركة ➔ إضافة إلى الشاشة الرئيسية"</strong> أولاً.
-                        </div>
-                      )}
-
-                    {notifPerm === "granted" ? (
-                      <button
-                        type="button"
-                        onClick={handleTestLockscreenNotif}
-                        className="w-full py-2 px-3 rounded-xl text-xs font-bold text-sky-700 dark:text-sky-300 bg-sky-500/15 hover:bg-sky-500/25 border border-sky-500/40 transition flex items-center justify-center gap-1.5 active:scale-[0.98]"
-                      >
-                        <span>🔔</span>
-                        <span>{isAr ? "اختبر إرسال إشعار للشاشة المقفلة الآن" : "Test Lock Screen Alert Now"}</span>
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={handleEnableLockscreenNotifs}
-                        className="w-full py-2 px-3 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 shadow-sm transition flex items-center justify-center gap-1.5 active:scale-[0.98]"
-                      >
-                        <span>📲</span>
-                        <span>{isAr ? "تفعيل إشعارات الهاتف للشاشة المقفلة بنقرة واحدة" : "Enable Mobile Lock Screen Alerts"}</span>
-                      </button>
+                    
+                    {notifications.length > 0 && (
+                      <div className="flex items-center gap-2.5">
+                        {unreadNotificationsCount > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => markAllNotificationsRead(notifications)}
+                            className="text-[11px] font-bold flex items-center gap-1 text-sky-600 dark:text-sky-400 hover:underline transition"
+                            title={isAr ? "تحديد الكل كمقروء" : "Mark all as read"}
+                          >
+                            <CheckCheck className="w-3.5 h-3.5" />
+                            <span>{isAr ? "مقروء" : "Read"}</span>
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => deleteAllNotifications(notifications)}
+                          className="text-[11px] font-bold flex items-center gap-1 text-rose-600 dark:text-rose-400 hover:underline transition"
+                          title={isAr ? "مسح جميع الإشعارات" : "Delete all notifications"}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>{isAr ? "مسح الكل" : "Delete All"}</span>
+                        </button>
+                      </div>
                     )}
                   </div>
 
-                  <div className="overflow-y-auto max-h-80">
+                  {/* Clean Notification List Only */}
+                  <div className="overflow-y-auto max-h-80 divide-y" style={{ borderColor: THEME.borderLight }}>
                     {notifications.length === 0 ? (
-                      <div
-                        className="p-6 text-center text-xs"
-                        style={{ color: THEME.textMuted }}
-                      >
-                        {isAr
-                          ? "لا توجد إشعارات حالياً"
-                          : "No flight notifications yet."}
+                      <div className="py-10 px-4 text-center text-xs" style={{ color: THEME.textMuted }}>
+                        <Bell className="w-8 h-8 mx-auto mb-2 opacity-30 text-gray-400" />
+                        <div>{isAr ? "لا توجد إشعارات حالياً" : "No notifications right now."}</div>
                       </div>
                     ) : (
                       notifications.map((n) => (
-                        <button
+                        <div
                           key={n.id}
-                          type="button"
-                          onClick={() => {
-                            markNotificationRead(n);
-                            setNotifOpen(false);
-                            if (canSeeSchedule) setActiveView("schedule");
-                          }}
-                          className="w-full text-start px-4 py-3 transition flex items-start gap-3 border-b"
+                          className="w-full text-start px-4 py-3 transition flex items-center justify-between gap-3 hover:bg-black/5 dark:hover:bg-white/5 group"
                           style={{
-                            borderColor: THEME.borderLight,
-                            backgroundColor: !n.read
-                              ? "rgba(59, 130, 246, 0.08)"
-                              : "transparent",
+                            backgroundColor: !n.read ? "rgba(59, 130, 246, 0.08)" : "transparent",
                           }}
                         >
-                          <span
-                            className={`mt-1.5 w-2 h-2 rounded-full flex-shrink-0 ${
-                              !n.read ? "bg-sky-500" : "bg-transparent"
-                            }`}
-                          />
-                          <div className="flex-1 min-w-0">
-                            <div className="text-xs font-semibold leading-snug">
-                              {n.message}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              markNotificationRead(n);
+                              setNotifOpen(false);
+                              if (canSeeSchedule) setActiveView("schedule");
+                            }}
+                            className="flex items-start gap-3 flex-1 min-w-0 text-start"
+                          >
+                            <span
+                              className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${
+                                !n.read ? "bg-sky-500 animate-pulse" : "bg-transparent"
+                              }`}
+                            />
+                            <div className="flex-1 min-w-0">
+                              <div
+                                className={`text-xs leading-snug break-words ${
+                                  !n.read ? "font-bold" : "font-normal"
+                                }`}
+                                style={{ color: THEME.text }}
+                              >
+                                {n.message}
+                              </div>
+                              <div
+                                className="text-[10px] mt-1 font-mono tabular-nums flex items-center gap-2 flex-wrap"
+                                style={{ color: THEME.textMuted }}
+                              >
+                                <span>
+                                  {n.createdAtIso
+                                    ? new Date(n.createdAtIso).toLocaleString(isAr ? "ar-SA" : "en-US", {
+                                        month: "short",
+                                        day: "numeric",
+                                        hour: "2-digit",
+                                        minute: "2-digit",
+                                      })
+                                    : ""}
+                                </span>
+                                {n.flightNo && (
+                                  <span className="px-1.5 py-0.2 rounded bg-sky-500/10 text-sky-600 dark:text-sky-400 font-bold inline-flex items-center gap-1">
+                                    <Plane className="w-3 h-3 text-sky-400" />
+                                    <span>{n.flightNo}</span>
+                                  </span>
+                                )}
+                              </div>
                             </div>
-                            <div
-                              className="text-[10px] mt-1 font-mono tabular-nums"
-                              style={{ color: THEME.textMuted }}
-                            >
-                              {n.createdAtIso
-                                ? new Date(n.createdAtIso).toLocaleString()
-                                : ""}
-                            </div>
-                          </div>
-                        </button>
+                          </button>
+
+                          {/* Individual Notification Delete Button */}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              deleteNotification(n);
+                            }}
+                            className="p-1.5 rounded-lg text-gray-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-500/10 transition shrink-0 self-center"
+                            title={isAr ? "مسح الإشعار" : "Delete notification"}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       ))
                     )}
                   </div>
@@ -2223,7 +2531,33 @@ export function CrewPortal({
       )}
 
       {/* ═══ Main Home Grid ═══ */}
-      <main className="max-w-6xl mx-auto">
+      <main className="relative max-w-6xl mx-auto min-h-[80vh]">
+        {/* Large Page Background Watermark Logo (behind entire grid) */}
+        {portalIconStyle === "watermark_logo" && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none overflow-hidden p-6 z-0 select-none">
+            {toDisplayImageUrl(portalWatermarkLogo) ? (
+              <img
+                src={toDisplayImageUrl(portalWatermarkLogo)}
+                alt="Company Watermark"
+                className="w-[340px] sm:w-[520px] md:w-[680px] max-w-[85vw] max-h-[70vh] object-contain transition-all duration-300"
+                style={{
+                  opacity: portalWatermarkOpacity ?? 0.18,
+                  filter: darkMode ? "brightness(1.2) contrast(1.1)" : "none",
+                }}
+                onError={(e) => {
+                  e.currentTarget.style.display = "none";
+                }}
+              />
+            ) : (
+              <Shield
+                className="w-[300px] sm:w-[450px] h-[300px] sm:h-[450px] text-muted-foreground transition-all duration-300"
+                style={{ opacity: (portalWatermarkOpacity ?? 0.18) * 0.7 }}
+              />
+            )}
+          </div>
+        )}
+
+        <div className="relative z-10 space-y-2">
         <div
           className="px-4 pt-4 pb-2 flex items-center justify-between flex-wrap gap-2 text-sm"
           style={{ color: THEME.textMuted }}
@@ -2236,6 +2570,103 @@ export function CrewPortal({
           </div>
         </div>
 
+        {/* ═══ Mobile & Lock Screen Push Notification Card (Shows ONLY when notifications are not enabled yet) ═══ */}
+        {notifPerm !== "granted" && (
+          <div className="px-4 pb-2">
+            <div
+              className="rounded-2xl p-4 border shadow-sm transition-all relative overflow-hidden"
+              style={{
+                backgroundColor: darkMode ? "rgba(30, 41, 59, 0.7)" : "rgba(248, 250, 252, 0.95)",
+                borderColor: "rgba(59, 130, 246, 0.35)",
+              }}
+            >
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-3.5">
+                <div className="flex items-start gap-3 min-w-0">
+                  <div
+                    className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-sm"
+                    style={{
+                      backgroundColor: "rgba(59, 130, 246, 0.15)",
+                      color: "#2563eb",
+                    }}
+                  >
+                    <Smartphone className="w-5 h-5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-bold text-xs sm:text-sm" style={{ color: THEME.text }}>
+                        {isAr
+                          ? "إشعارات الهاتف وشاشة القفل (Lock Screen Alerts)"
+                          : "Mobile & Lock Screen Notifications"}
+                      </span>
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                        {isAr ? "غير مفعّلة بعد" : "Inactive"}
+                      </span>
+                    </div>
+                    <p className="text-xs mt-1 leading-relaxed" style={{ color: THEME.textMuted }}>
+                      {isAr
+                        ? "فعّل إشعارات الهاتف لتلقي رحلاتك وتحديثات الطاقم مع اهتزاز وصوت وتظهر على شاشة القفل فوراً."
+                        : "Enable phone notifications to get flight updates, alerts, and duty calls on your phone lock screen."}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex items-center flex-wrap gap-2 shrink-0 self-start md:self-center">
+                  <button
+                    type="button"
+                    onClick={handleEnableLockscreenNotifs}
+                    className="px-4 py-2 rounded-xl text-xs font-bold text-white shadow-md flex items-center gap-2 transition hover:opacity-95 active:scale-95"
+                    style={{ background: THEME.gradient || "linear-gradient(135deg, #2563eb, #1d4ed8)" }}
+                  >
+                    <Bell className="w-4 h-4" />
+                    <span>{isAr ? "تفعيل إشعارات الهاتف الآن" : "Enable Phone Notifications"}</span>
+                  </button>
+
+                  {/* iPhone / iOS guide button */}
+                  {isIos && !isStandalone && (
+                    <button
+                      type="button"
+                      onClick={() => setShowIosHelp((v) => !v)}
+                      className="px-2.5 py-1.5 rounded-lg text-[11px] font-medium border text-sky-600 dark:text-sky-400 hover:bg-sky-50 dark:hover:bg-sky-950/30 transition flex items-center gap-1"
+                      style={{ borderColor: "rgba(56, 189, 248, 0.4)" }}
+                    >
+                      <Sparkles className="w-3 h-3" />
+                      <span>{isAr ? "إعداد آيفون (iOS)" : "iPhone Setup"}</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* iOS Safari Home Screen instructions accordion */}
+              {isIos && !isStandalone && showIosHelp && (
+                <div
+                  className="mt-3 pt-3 border-t text-xs rounded-lg p-3 space-y-1.5 leading-relaxed"
+                  style={{
+                    backgroundColor: darkMode ? "rgba(15, 23, 42, 0.5)" : "rgba(241, 245, 249, 0.8)",
+                    borderColor: THEME.borderLight,
+                    color: THEME.textMuted,
+                  }}
+                >
+                  <div className="font-bold text-xs" style={{ color: THEME.text }}>
+                    {isAr ? "📱 لتفعيل إشعارات شاشة القفل على هاتف آيفون (iOS 16.4+):" : "📱 For iPhone Lock Screen Alerts (iOS 16.4+):"}
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="font-bold text-blue-500">1.</span>
+                    <span>{isAr ? "اضغط على زر المشاركة (Share icon ⎋) في أسفل متصفح Safari." : "Tap the Share button (⎋) at the bottom of Safari."}</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="font-bold text-blue-500">2.</span>
+                    <span>{isAr ? "اختر «إضافة إلى الشاشة الرئيسية» (Add to Home Screen)." : "Select 'Add to Home Screen'."}</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="font-bold text-blue-500">3.</span>
+                    <span>{isAr ? "افتح التطبيق من شاشة هاتفك الرئيسية، ثم اضغط زر «تفعيل إشعارات الهاتف» أعلاه." : "Open the app from your home screen and tap 'Enable Phone Notifications' above."}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
         {latestUnreadNotification && (
           <div className="px-4 pt-1 pb-2">
             <div
@@ -2333,7 +2764,10 @@ export function CrewPortal({
             {canSeeSchedule && (
               <PortalCard
                 threeDIcon="schedule"
-                icon={Calendar}
+                icon={getResolvedIcon("schedule", Calendar)}
+                portalIconStyle={portalIconStyle}
+                watermarkLogoUrl={portalWatermarkLogo}
+                watermarkOpacity={portalWatermarkOpacity}
                 label={isAr ? "جدولي" : "My Schedule"}
                 subLabel={isAr ? "رحلاتي المجدولة" : "Assigned Flights"}
                 onClick={() => setActiveView("schedule")}
@@ -2345,7 +2779,10 @@ export function CrewPortal({
             {canSeeCompletedFlights && (
               <PortalCard
                 threeDIcon="completed-flights"
-                icon={CheckCircle2}
+                icon={getResolvedIcon("completed-flights", CheckCircle2)}
+                portalIconStyle={portalIconStyle}
+                watermarkLogoUrl={portalWatermarkLogo}
+                watermarkOpacity={portalWatermarkOpacity}
                 label={isAr ? "الرحلات المكتملة" : "Completed Flights"}
                 subLabel={
                   canEditCompleted
@@ -2371,7 +2808,10 @@ export function CrewPortal({
             {canSeeCatering && (
               <PortalCard
                 threeDIcon="catering"
-                icon={UtensilsCrossed}
+                icon={getResolvedIcon("catering", UtensilsCrossed)}
+                portalIconStyle={portalIconStyle}
+                watermarkLogoUrl={portalWatermarkLogo}
+                watermarkOpacity={portalWatermarkOpacity}
                 label={isAr ? "التموين" : "Catering"}
                 subLabel={
                   canCateringCreate || canCateringEdit
@@ -2391,7 +2831,10 @@ export function CrewPortal({
             {canSeeAircraft && (
               <PortalCard
                 threeDIcon="aircraft-status"
-                icon={Plane}
+                icon={getResolvedIcon("aircraft-status", Plane)}
+                portalIconStyle={portalIconStyle}
+                watermarkLogoUrl={portalWatermarkLogo}
+                watermarkOpacity={portalWatermarkOpacity}
                 label={isAr ? "حالة طائرتي" : "My Aircraft Status"}
                 subLabel={
                   myAircraftStatus.length === 1
@@ -2435,7 +2878,10 @@ export function CrewPortal({
             {canSeeCerts && (
               <PortalCard
                 threeDIcon="certificates"
-                icon={Award}
+                icon={getResolvedIcon("certificates", Award)}
+                portalIconStyle={portalIconStyle}
+                watermarkLogoUrl={portalWatermarkLogo}
+                watermarkOpacity={portalWatermarkOpacity}
                 label={isAr ? "الشهادات" : "Certificates"}
                 subLabel={isAr ? "الوثائق والمرفقات" : "Licenses & Docs"}
                 onClick={() => setActiveView("certificates")}
@@ -2453,7 +2899,10 @@ export function CrewPortal({
             {canSeeFTL && (
               <PortalCard
                 threeDIcon="ftl"
-                icon={Clock}
+                icon={getResolvedIcon("ftl", Clock)}
+                portalIconStyle={portalIconStyle}
+                watermarkLogoUrl={portalWatermarkLogo}
+                watermarkOpacity={portalWatermarkOpacity}
                 label="FTL"
                 subLabel={isAr ? "حدود الطيران والخدمة" : "Duty & Flight Limits"}
                 onClick={() => setActiveView("ftl")}
@@ -2465,7 +2914,10 @@ export function CrewPortal({
             {canSeeManuals && (
               <PortalCard
                 threeDIcon="manuals"
-                icon={BookOpen}
+                icon={getResolvedIcon("manuals", BookOpen)}
+                portalIconStyle={portalIconStyle}
+                watermarkLogoUrl={portalWatermarkLogo}
+                watermarkOpacity={portalWatermarkOpacity}
                 label={isAr ? "الأدلة" : "Manuals"}
                 subLabel={isAr ? "مكتبة العمليات" : "Operations Library"}
                 onClick={() => setActiveView("manuals")}
@@ -2475,55 +2927,86 @@ export function CrewPortal({
             )}
 
             {canSeeHours && (
-              <button
-                type="button"
+              <PortalCard
+                threeDIcon="hours"
+                icon={getResolvedIcon("hours", TrendingUp)}
+                portalIconStyle={portalIconStyle}
+                watermarkLogoUrl={portalWatermarkLogo}
+                watermarkOpacity={portalWatermarkOpacity}
+                label={isAr ? "ساعاتي" : "My Hours"}
+                subLabel={totalHours.blockHM || "0:00"}
                 onClick={() => setActiveView("hours")}
-                className="relative aspect-[1/1] rounded-2xl flex flex-col items-center justify-between p-4 sm:p-5 transition-all duration-300 border group overflow-hidden text-center cursor-pointer select-none active:scale-[0.97]"
-                style={{
-                  background: THEME.gradient,
-                  borderColor: THEME.border,
-                  boxShadow: "0 8px 24px -4px rgba(0, 0, 0, 0.15)",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.transform = "translateY(-3px)";
-                  e.currentTarget.style.boxShadow = "0 14px 32px -4px rgba(0, 0, 0, 0.25)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.transform = "translateY(0)";
-                  e.currentTarget.style.boxShadow = "0 8px 24px -4px rgba(0, 0, 0, 0.15)";
-                }}
-              >
-                {/* Background ambient radial highlight */}
-                <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
+                badge={
+                  totalHours.totalBlockMin > 0
+                    ? `${Math.floor(totalHours.totalBlockMin / 60)}h`
+                    : null
+                }
+                badgeColor="sky"
+                THEME={THEME}
+                darkMode={darkMode}
+              />
+            )}
 
-                {totalHours.totalBlockMin > 0 && (
-                  <span className="absolute top-3 end-3 px-2 py-0.5 rounded-full bg-white/20 backdrop-blur-md text-white text-[10px] font-mono tabular-nums font-bold border border-white/30 shadow-sm z-10">
-                    {Math.floor(totalHours.totalBlockMin / 60)}h
-                  </span>
-                )}
+            {canSeeOperations && (
+              <PortalCard
+                threeDIcon="operations"
+                icon={getResolvedIcon("operations", PlaneTakeoff)}
+                portalIconStyle={portalIconStyle}
+                watermarkLogoUrl={portalWatermarkLogo}
+                watermarkOpacity={portalWatermarkOpacity}
+                label={isAr ? "العمليات" : "Operations"}
+                subLabel={
+                  canManageOperations
+                    ? isAr
+                      ? "رحلات وسكترات والطاقم"
+                      : "Multi-Sector & Crew"
+                    : isAr
+                    ? "عرض العمليات"
+                    : "Flight Ops"
+                }
+                onClick={() => setActiveView("operations")}
+                THEME={THEME}
+                darkMode={darkMode}
+              />
+            )}
 
-                <div className="w-full flex-1 flex flex-col items-center justify-center pt-1 z-10">
-                  <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-white/15 backdrop-blur-md border border-white/25 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform duration-300 shadow-inner">
-                    <ThreeDIcon
-                      name="hours"
-                      size={46}
-                      theme={THEME}
-                      darkMode={darkMode}
-                      interactive={false}
-                    />
-                  </div>
-                  <span className="text-xs sm:text-sm font-bold text-center text-white tracking-tight">
-                    {isAr ? "ساعاتي" : "My Hours"}
-                  </span>
-                </div>
+            {canSeeFlightForms && (
+              <PortalCard
+                threeDIcon="flight-forms"
+                icon={getResolvedIcon("flight-forms", FileCheck2)}
+                portalIconStyle={portalIconStyle}
+                watermarkLogoUrl={portalWatermarkLogo}
+                watermarkOpacity={portalWatermarkOpacity}
+                label={isAr ? "النماذج والجي دي" : "Forms & GD"}
+                subLabel={isAr ? "تحميل النماذج والإقرار" : "Flight Forms & PDF"}
+                onClick={() => setActiveView("flight-forms")}
+                THEME={THEME}
+                darkMode={darkMode}
+              />
+            )}
 
-                <span className="text-[10px] sm:text-[11px] font-mono font-semibold text-white/90 text-center line-clamp-1 w-full pt-1 border-t border-white/20 z-10">
-                  {totalHours.blockHM}
-                </span>
-              </button>
+            {canSeeJourneyLog && (
+              <PortalCard
+                threeDIcon="journey-log"
+                icon={getResolvedIcon("journey-log", ClipboardCheck)}
+                portalIconStyle={portalIconStyle}
+                watermarkLogoUrl={portalWatermarkLogo}
+                watermarkOpacity={portalWatermarkOpacity}
+                label={isAr ? "سجل الرحلة (JL)" : "Journey Log"}
+                subLabel={isAr ? "إدخال معطيات الرحلة 24H" : "Post-Flight 24H Log"}
+                badge={
+                  quickCompletableFlights.filter((f) => !isFlightCompleted(f)).length ||
+                  null
+                }
+                badgeColor="sky"
+                onClick={() => setActiveView("journey-log")}
+                THEME={THEME}
+                darkMode={darkMode}
+              />
             )}
           </div>
         )}
+        </div>
       </main>
 
       {/* ═══ Overlay Views ═══ */}
@@ -3889,14 +4372,23 @@ export function CrewPortal({
 
             {/* ═══════════ FTL ═══════════ */}
             {activeView === "ftl" && canSeeFTL && (
-              <div
-                className="rounded-xl p-3 border"
-                style={{
-                  backgroundColor: THEME.card,
-                  borderColor: THEME.borderLight,
-                }}
-              >
-                <FTLModule crew={[myCrewData]} flights={myFlights} />
+              <div className="space-y-4">
+                <EasaDailyDutyCard
+                  myCrewData={myCrewData}
+                  myFlights={myFlights}
+                  isAr={isAr}
+                  THEME={THEME}
+                  darkMode={darkMode}
+                />
+                <div
+                  className="rounded-xl p-3 border"
+                  style={{
+                    backgroundColor: THEME.card,
+                    borderColor: THEME.borderLight,
+                  }}
+                >
+                  <FTLModule crew={[myCrewData]} flights={myFlights} />
+                </div>
               </div>
             )}
 
@@ -4312,6 +4804,281 @@ export function CrewPortal({
                       </div>
                     </div>
                   )}
+              </div>
+            )}
+
+            {/* ═══════════ QUICK OPERATIONS HUB (CREW PORTAL ONLY) ═══════════ */}
+            {activeView === "operations" && canSeeOperations && (
+              <OperationsQuickHub
+                flights={flights}
+                setFlights={setFlights}
+                reloadFlights={reloadFlights}
+                crew={crew}
+                fleet={fleet}
+                settings={settings}
+                user={targetUser}
+                lang={lang}
+                previewMode={previewCrewPortal}
+                setSyncStatus={setSyncStatus}
+                onOpenSchedule={() => setActiveView("schedule")}
+                onOpenFlightForms={(savedFlight) => {
+                  setFormsHubFlightId(savedFlight?.id ? String(savedFlight.id) : null);
+                  setActiveView("flight-forms");
+                }}
+              />
+            )}
+
+            {/* ═══════════ FLIGHT FORMS & GENDEC HUB (CREW PORTAL ONLY) ═══════════ */}
+            {activeView === "flight-forms" && canSeeFlightForms && (
+              <FlightFormsGdHub
+                flights={flights}
+                fleet={fleet}
+                camoList={camoData.length > 0 ? camoData : safeArray(propCamoList)}
+                crew={crew}
+                settings={settings}
+                user={targetUser}
+                lang={lang}
+                previewMode={previewCrewPortal}
+                initialFlightId={formsHubFlightId}
+              />
+            )}
+
+            {/* ═══════════ SIMPLIFIED JOURNEY LOG (CREW PORTAL ONLY) ═══════════ */}
+            {activeView === "journey-log" && canSeeJourneyLog && (
+              <div className="space-y-4">
+                <div
+                  className="p-4 rounded-xl border space-y-3"
+                  style={{
+                    backgroundColor: THEME.card,
+                    borderColor: THEME.borderLight,
+                  }}
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5">
+                      <div
+                        className="w-9 h-9 rounded-xl flex items-center justify-center text-white shrink-0"
+                        style={{ background: THEME.gradient }}
+                      >
+                        <ClipboardCheck className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h3
+                          className="text-sm font-bold"
+                          style={{ color: THEME.text }}
+                        >
+                          {isAr
+                            ? "سجل الرحلة السريع (Journey Log 24H)"
+                            : "Quick Journey Log (24H UTC)"}
+                        </h3>
+                        <p
+                          className="text-[11px]"
+                          style={{ color: THEME.textMuted }}
+                        >
+                          {isAr
+                            ? "اختر الرحلة واضغط إدخال لإضافة الأوقات الفعلية والهبوط والوقود بضغطة واحدة"
+                            : "Select a flight to log actual Block Off, Takeoff, Landing, Block On & Fuel"}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {[
+                        {
+                          id: "all",
+                          label: isAr ? "الكل" : "All",
+                        },
+                        {
+                          id: "pending",
+                          label: isAr ? "بانتظار الإدخال" : "Pending Log",
+                        },
+                        {
+                          id: "completed",
+                          label: isAr ? "مكتملة" : "Completed",
+                        },
+                      ].map((tabItem) => (
+                        <button
+                          key={tabItem.id}
+                          type="button"
+                          onClick={() => setJlFilterMode(tabItem.id)}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition ${
+                            jlFilterMode === tabItem.id
+                              ? "text-white border-transparent shadow-sm"
+                              : ""
+                          }`}
+                          style={
+                            jlFilterMode === tabItem.id
+                              ? { background: THEME.gradient }
+                              : {
+                                  backgroundColor: THEME.surfaceSubtle,
+                                  borderColor: THEME.borderLight,
+                                  color: THEME.textMuted,
+                                }
+                          }
+                        >
+                          {tabItem.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="relative">
+                    <Search
+                      className="w-4 h-4 absolute top-1/2 -translate-y-1/2 start-3 opacity-60"
+                      style={{ color: THEME.textMuted }}
+                    />
+                    <input
+                      type="text"
+                      value={jlSearch}
+                      onChange={(e) => setJlSearch(e.target.value)}
+                      placeholder={
+                        isAr
+                          ? "ابحث برقم الرحلة، التسجيل، المطار، أو التاريخ (YYYY-MM-DD)..."
+                          : "Search flight number, registration, airport, or date..."
+                      }
+                      className="w-full ps-9 pe-3 py-2 text-xs rounded-xl border focus:outline-none"
+                      style={{
+                        backgroundColor: THEME.surfaceSubtle,
+                        borderColor: THEME.borderLight,
+                        color: THEME.text,
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {journeyLogFlights.length === 0 ? (
+                  <div
+                    className="p-8 rounded-xl border text-center text-xs"
+                    style={{
+                      backgroundColor: THEME.card,
+                      borderColor: THEME.borderLight,
+                      color: THEME.textMuted,
+                    }}
+                  >
+                    {isAr
+                      ? "لا توجد رحلات مطابقة للبحث أو التصفية"
+                      : "No flights match your search or filter"}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {journeyLogFlights.slice(0, 80).map((f) => {
+                      const done = isFlightCompleted(f);
+                      const a = f.actual || {};
+                      const fDate = (a.std || f.std || "").slice(0, 10) || "—";
+                      const schedWindow = `${fmtHM(f.std)} → ${fmtHM(f.sta)}`;
+                      const actualWindow = done
+                        ? `${fmtHM(a.std)} → ${fmtHM(a.sta)}`
+                        : null;
+
+                      return (
+                        <div
+                          key={f.id}
+                          className="p-3.5 rounded-xl border flex flex-col justify-between gap-3 transition"
+                          style={{
+                            backgroundColor: THEME.card,
+                            borderColor: done
+                              ? "rgba(16, 185, 129, 0.35)"
+                              : THEME.borderLight,
+                          }}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span
+                                  className="font-black font-mono text-sm"
+                                  style={{ color: THEME.text }}
+                                >
+                                  {f.flightNo || "—"}
+                                </span>
+                                <span
+                                  className="px-2 py-0.5 rounded-md text-[11px] font-mono font-bold border"
+                                  style={{
+                                    backgroundColor: THEME.surfaceSubtle,
+                                    borderColor: THEME.borderLight,
+                                    color: THEME.accent,
+                                  }}
+                                >
+                                  {f.acft || "—"}
+                                </span>
+                                <span
+                                  className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                    done
+                                      ? "bg-emerald-500/15 text-emerald-500"
+                                      : "bg-amber-500/15 text-amber-500"
+                                  }`}
+                                >
+                                  {done
+                                    ? isAr
+                                      ? "مكتملة (JL)"
+                                      : "Logged"
+                                    : isAr
+                                    ? "بانتظار الإدخال"
+                                    : "Pending"}
+                                </span>
+                              </div>
+
+                              <div
+                                className="flex items-center gap-2 mt-1.5 text-xs font-mono font-bold"
+                                style={{ color: THEME.text }}
+                              >
+                                <span>{f.dep || "—"}</span>
+                                <Plane className="w-3.5 h-3.5 text-sky-500" />
+                                <span>{f.arr || "—"}</span>
+                                <span
+                                  className="text-[11px] font-normal ms-1"
+                                  style={{ color: THEME.textMuted }}
+                                >
+                                  ({fDate})
+                                </span>
+                              </div>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => setEditingCompletedFlight(f)}
+                              className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition shrink-0 text-white shadow-sm ${
+                                done
+                                  ? "bg-emerald-600 hover:bg-emerald-700"
+                                  : "bg-sky-600 hover:bg-sky-700"
+                              }`}
+                            >
+                              <ClipboardCheck className="w-3.5 h-3.5" />
+                              <span>
+                                {done
+                                  ? isAr
+                                    ? "تعديل السجل"
+                                    : "Edit JL"
+                                  : isAr
+                                  ? "إدخال 24H"
+                                  : "Enter JL"}
+                              </span>
+                            </button>
+                          </div>
+
+                          <div
+                            className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t text-[11px] font-mono"
+                            style={{
+                              borderColor: THEME.borderLight,
+                              color: THEME.textMuted,
+                            }}
+                          >
+                            <span>
+                              {isAr ? "المجدول:" : "STD/STA:"} {schedWindow} UTC
+                            </span>
+                            {actualWindow ? (
+                              <span className="text-emerald-500 font-bold">
+                                {isAr ? "الفعلي:" : "ACT:"} {actualWindow} UTC
+                              </span>
+                            ) : (
+                              <span>
+                                {isAr ? "لم تُسجّل الأوقات الفعلية بعد" : "Actuals pending"}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -4858,6 +5625,375 @@ export function CrewPortal({
           </div>
         </div>
       )}
+
+      {/* ═══ Operational Phone Directory Modal ═══ */}
+      <PhoneDirectoryModal
+        isOpen={directoryOpen}
+        onClose={() => setDirectoryOpen(false)}
+        crew={crew}
+        users={users}
+        lang={lang}
+      />
+    </div>
+  );
+}
+
+/* ═══════════ EASA Daily Duty & Sector Limit Card ═══════════ */
+function EasaDailyDutyCard({ myCrewData, myFlights, isAr, THEME, darkMode }) {
+  const [selectedDate, setSelectedDate] = useState(() =>
+    new Date().toISOString().slice(0, 10)
+  );
+
+  // Filter flights assigned to this crew member on selectedDate
+  const daysFlights = useMemo(() => {
+    if (!myCrewData?.id || !Array.isArray(myFlights)) return [];
+    return myFlights
+      .filter((f) => {
+        const std = f.actual?.std || f.std;
+        if (!std) return false;
+        const flightDate = String(std).slice(0, 10);
+        if (flightDate !== selectedDate) return false;
+        return (f.crewSlots || []).some((s) => s.crewId === myCrewData.id);
+      })
+      .sort((a, b) => {
+        const stdA = a.actual?.std || a.std || "";
+        const stdB = b.actual?.std || b.std || "";
+        return stdA.localeCompare(stdB);
+      });
+  }, [myCrewData?.id, myFlights, selectedDate]);
+
+  const sectorsCount = daysFlights.length;
+
+  const dutyMetrics = useMemo(() => {
+    if (sectorsCount === 0) {
+      return {
+        hasDuty: false,
+        dutyMin: 0,
+        blockMin: 0,
+        maxFdpMin: 13 * 60,
+        fdpLimitObj: { maxMin: 13 * 60, label: "13h 00m", baseMin: 13 * 60, deductionMin: 0, maxSectors: 8 },
+        isExceeded: false,
+        isNearLimit: false,
+        marginMin: 13 * 60,
+        dutyStartIso: null,
+        dutyEndIso: null,
+      };
+    }
+
+    const firstFlight = daysFlights[0];
+    const lastFlight = daysFlights[daysFlights.length - 1];
+    const firstStd = firstFlight.actual?.std || firstFlight.std;
+    const lastSta = lastFlight.actual?.sta || lastFlight.sta || firstStd;
+
+    const dutyStartMs = new Date(firstStd).getTime() - 60 * 60 * 1000;
+    const dutyEndMs = new Date(lastSta).getTime() + 30 * 60 * 1000;
+    const dutyMin = Math.max(30, Math.round((dutyEndMs - dutyStartMs) / 60000));
+
+    let blockMin = 0;
+    daysFlights.forEach((f) => {
+      const std = f.actual?.std || f.std;
+      const sta = f.actual?.sta || f.sta;
+      if (std && sta) {
+        blockMin += Math.max(0, Math.round((new Date(sta).getTime() - new Date(std).getTime()) / 60000));
+      }
+    });
+
+    const dutyStartIso = new Date(dutyStartMs).toISOString();
+    const dutyEndIso = new Date(dutyEndMs).toISOString();
+    const fdpLimitObj = calcFdpLimit(dutyStartIso, sectorsCount);
+    const maxFdpMin = fdpLimitObj.maxMin;
+    const marginMin = maxFdpMin - dutyMin;
+    const fdpPct = Math.min(100, Math.round((dutyMin / maxFdpMin) * 100));
+
+    return {
+      hasDuty: true,
+      dutyStartIso,
+      dutyEndIso,
+      dutyMin,
+      blockMin,
+      fdpLimitObj,
+      maxFdpMin,
+      marginMin,
+      fdpPct,
+      isExceeded: dutyMin > maxFdpMin,
+      isNearLimit: fdpPct >= 85 && dutyMin <= maxFdpMin,
+    };
+  }, [daysFlights, sectorsCount]);
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const tomorrowStr = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+
+  return (
+    <div
+      className="p-4 rounded-2xl border space-y-4 shadow-sm"
+      style={{
+        backgroundColor: THEME.card,
+        borderColor: THEME.borderLight,
+      }}
+    >
+      {/* Header Bar */}
+      <div className="flex flex-wrap gap-2 items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <div
+            className="w-9 h-9 rounded-xl flex items-center justify-center font-bold text-white shadow-sm shrink-0"
+            style={{ background: THEME.gradient }}
+          >
+            <Clock className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <h3 className="text-sm font-bold flex items-center gap-2" style={{ color: THEME.text }}>
+              <span>{isAr ? "تحليل فترات الخدمة والسكك اليومية (EASA ORO.FTL.205)" : "EASA Daily Duty & Sector Limits"}</span>
+              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-sky-500/15 text-sky-400 border border-sky-500/30">
+                EASA Compliant
+              </span>
+            </h3>
+            <p className="text-xs" style={{ color: THEME.textMuted }}>
+              {isAr
+                ? "حساب وقت الخدمة الفعلي (FDP) والحد الأقصى المسموح به حسب عدد الرحلات والسكك في اليوم"
+                : "Live Duty Period (FDP) & Daily Sector allowance based on EASA Table 2"}
+            </p>
+          </div>
+        </div>
+
+        {/* Date Switcher */}
+        <div className="flex items-center gap-1 bg-black/10 dark:bg-white/5 p-1 rounded-xl border border-white/10 text-xs font-bold">
+          <button
+            type="button"
+            onClick={() => setSelectedDate(todayStr)}
+            className={`px-2.5 py-1 rounded-lg transition ${
+              selectedDate === todayStr ? "bg-sky-500 text-white shadow-sm" : "opacity-75 hover:opacity-100"
+            }`}
+          >
+            {isAr ? "اليوم" : "Today"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelectedDate(tomorrowStr)}
+            className={`px-2.5 py-1 rounded-lg transition ${
+              selectedDate === tomorrowStr ? "bg-sky-500 text-white shadow-sm" : "opacity-75 hover:opacity-100"
+            }`}
+          >
+            {isAr ? "الغد" : "Tomorrow"}
+          </button>
+          <input
+            type="date"
+            value={selectedDate}
+            onChange={(e) => e.target.value && setSelectedDate(e.target.value)}
+            className="bg-transparent text-xs font-mono font-bold focus:outline-none cursor-pointer px-1"
+            style={{ color: THEME.text }}
+          />
+        </div>
+      </div>
+
+      {/* Main Status & Metrics Grid */}
+      {!dutyMetrics.hasDuty ? (
+        <div
+          className="p-5 rounded-xl border border-dashed text-center flex flex-col items-center justify-center gap-2"
+          style={{ backgroundColor: THEME.surfaceSubtle, borderColor: THEME.borderLight }}
+        >
+          <ShieldCheck className="w-8 h-8 text-emerald-500 opacity-90" />
+          <div className="text-sm font-bold" style={{ color: THEME.text }}>
+            {isAr ? "لا توجد رحلات أو خدمة مجدولة لهذا اليوم (راحة / OFF)" : "No Flight Duty Scheduled on this Date (Rest / OFF)"}
+          </div>
+          <div className="text-xs" style={{ color: THEME.textMuted }}>
+            {isAr ? `التاريخ المحدد: ${selectedDate} — حالة الراحة مطابقة لقواعد EASA` : `Selected Date: ${selectedDate} — Rest requirements satisfied`}
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* EASA Compliance Banner */}
+          <div
+            className={`p-3 rounded-xl border flex items-center justify-between gap-3 text-xs font-bold ${
+              dutyMetrics.isExceeded
+                ? "bg-rose-500/15 border-rose-500/40 text-rose-500"
+                : dutyMetrics.isNearLimit
+                ? "bg-amber-500/15 border-amber-500/40 text-amber-500"
+                : "bg-emerald-500/15 border-emerald-500/40 text-emerald-500"
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              {dutyMetrics.isExceeded ? (
+                <AlertTriangle className="w-4 h-4 shrink-0 text-rose-500" />
+              ) : dutyMetrics.isNearLimit ? (
+                <AlertTriangle className="w-4 h-4 shrink-0 text-amber-500" />
+              ) : (
+                <ShieldCheck className="w-4 h-4 shrink-0 text-emerald-500" />
+              )}
+              <span>
+                {dutyMetrics.isExceeded
+                  ? isAr
+                    ? "تنبيه هام: وقت الخدمة اليومي يتجاوز الحد الأقصى المسموح به من EASA!"
+                    : "CRITICAL: Daily Duty Time (FDP) exceeds EASA maximum limit!"
+                  : dutyMetrics.isNearLimit
+                  ? isAr
+                    ? "تحذير: اقتراب من الحد الأقصى لوقت الخدمة اليومي (أكثر من 85%)"
+                    : "WARNING: Approaching maximum daily EASA FDP limit (>85%)"
+                  : isAr
+                  ? "مطابق لمعايير EASA ORO.FTL.205 — وقت الخدمة والسكك ضمن الحدود المسموح بها"
+                  : "EASA COMPLIANT — Daily Duty Time and Sectors are within legal limits"}
+              </span>
+            </div>
+            <span className="font-mono text-[11px] px-2 py-0.5 rounded bg-black/20 shrink-0">
+              {dutyMetrics.fdpPct}% {isAr ? "مستغل" : "FDP Used"}
+            </span>
+          </div>
+
+          {/* Metric Cards Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {/* Card 1: Duty Time Window */}
+            <div
+              className="p-3.5 rounded-xl border space-y-1"
+              style={{ backgroundColor: THEME.surfaceSubtle, borderColor: THEME.borderLight }}
+            >
+              <div className="text-[11px] font-bold uppercase tracking-wider flex items-center justify-between" style={{ color: THEME.textMuted }}>
+                <span>{isAr ? "نافذة الخدمة اليومية" : "Duty Time Window"}</span>
+                <Clock className="w-3.5 h-3.5 text-sky-400" />
+              </div>
+              <div className="text-sm font-mono font-bold" style={{ color: THEME.text }}>
+                {dutyMetrics.dutyStartIso ? dutyMetrics.dutyStartIso.slice(11, 16) : "—"} ➔ {dutyMetrics.dutyEndIso ? dutyMetrics.dutyEndIso.slice(11, 16) : "—"} <span className="text-[10px] text-sky-400">UTC</span>
+              </div>
+              <div className="text-[10px]" style={{ color: THEME.textMuted }}>
+                {isAr ? "تشمل 60 دقيقة قبل الرحلة و30 دقيقة بعدها" : "Includes 60m pre-flight & 30m post-flight"}
+              </div>
+            </div>
+
+            {/* Card 2: Duty Time / FDP */}
+            <div
+              className="p-3.5 rounded-xl border space-y-1"
+              style={{ backgroundColor: THEME.surfaceSubtle, borderColor: THEME.borderLight }}
+            >
+              <div className="text-[11px] font-bold uppercase tracking-wider flex items-center justify-between" style={{ color: THEME.textMuted }}>
+                <span>{isAr ? "وقت الخدمة vs الحد الأقصى" : "Duty Time / Max FDP"}</span>
+                <Timer className="w-3.5 h-3.5 text-amber-400" />
+              </div>
+              <div className="text-base font-mono font-black flex items-baseline gap-1" style={{ color: THEME.text }}>
+                <span>{fmtDutyHM(dutyMetrics.dutyMin)}</span>
+                <span className="text-xs font-normal" style={{ color: THEME.textMuted }}>
+                  / Max {fmtDutyHM(dutyMetrics.maxFdpMin)}
+                </span>
+              </div>
+              <div className="w-full bg-black/20 rounded-full h-1.5 overflow-hidden mt-1">
+                <div
+                  className={`h-full transition-all ${
+                    dutyMetrics.isExceeded ? "bg-rose-500" : dutyMetrics.isNearLimit ? "bg-amber-500" : "bg-emerald-500"
+                  }`}
+                  style={{ width: `${Math.min(100, dutyMetrics.fdpPct)}%` }}
+                />
+              </div>
+            </div>
+
+            {/* Card 3: Daily Sectors */}
+            <div
+              className="p-3.5 rounded-xl border space-y-1"
+              style={{ backgroundColor: THEME.surfaceSubtle, borderColor: THEME.borderLight }}
+            >
+              <div className="text-[11px] font-bold uppercase tracking-wider flex items-center justify-between" style={{ color: THEME.textMuted }}>
+                <span>{isAr ? "السكك والرحلات اليومية" : "Daily Sectors Count"}</span>
+                <Plane className="w-3.5 h-3.5 text-emerald-400" />
+              </div>
+              <div className="text-base font-mono font-black" style={{ color: THEME.text }}>
+                {sectorsCount} <span className="text-xs font-semibold" style={{ color: THEME.textMuted }}>{isAr ? "سكك مسندة" : "Sectors Assigned"}</span>
+              </div>
+              <div className="text-[10px]" style={{ color: THEME.textMuted }}>
+                {sectorsCount > 2
+                  ? isAr
+                    ? `خصم ${dutyMetrics.fdpLimitObj.deductionMin}m لمجاوزة سكتين`
+                    : `-${dutyMetrics.fdpLimitObj.deductionMin}m deduction for >2 sectors`
+                  : isAr
+                  ? "حد قياسي لسكتين أو أقل"
+                  : "Standard limit (<=2 sectors)"}
+              </div>
+            </div>
+
+            {/* Card 4: FDP Buffer Margin */}
+            <div
+              className="p-3.5 rounded-xl border space-y-1"
+              style={{ backgroundColor: THEME.surfaceSubtle, borderColor: THEME.borderLight }}
+            >
+              <div className="text-[11px] font-bold uppercase tracking-wider flex items-center justify-between" style={{ color: THEME.textMuted }}>
+                <span>{isAr ? "الهامش المتبقي للخدمة" : "Remaining FDP Margin"}</span>
+                <Activity className="w-3.5 h-3.5 text-indigo-400" />
+              </div>
+              <div
+                className={`text-base font-mono font-black ${
+                  dutyMetrics.marginMin < 0 ? "text-rose-500" : "text-emerald-400"
+                }`}
+              >
+                {dutyMetrics.marginMin < 0
+                  ? `-${fmtDutyHM(Math.abs(dutyMetrics.marginMin))}`
+                  : `+${fmtDutyHM(dutyMetrics.marginMin)}`}
+              </div>
+              <div className="text-[10px]" style={{ color: THEME.textMuted }}>
+                {dutyMetrics.marginMin < 0
+                  ? isAr
+                    ? "تجاوز وقت الخدمة القانوني"
+                    : "FDP Limit Exceeded"
+                  : isAr
+                  ? "متاح قبل الوصول للحد الأقصى"
+                  : "Available buffer before limit"}
+              </div>
+            </div>
+          </div>
+
+          {/* Assigned Sectors Table / Cards */}
+          <div className="space-y-2 pt-2 border-t" style={{ borderColor: THEME.borderLight }}>
+            <div className="text-xs font-bold uppercase tracking-wider flex items-center justify-between" style={{ color: THEME.textMuted }}>
+              <span>{isAr ? "تفاصيل السكك المسندة لليوم:" : "Assigned Sectors Breakdown:"}</span>
+              <span className="font-mono text-[10px]">{daysFlights.length} {isAr ? "سكك" : "Sectors"}</span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              {daysFlights.map((f, idx) => {
+                const std = f.actual?.std || f.std || "—";
+                const sta = f.actual?.sta || f.sta || "—";
+                const callsign = f.flightNo || f.callsign || "FLT";
+                const reg = f.acft || f.reg || "—";
+                const dep = f.dep || "—";
+                const arr = f.arr || "—";
+                const blockMin = std !== "—" && sta !== "—"
+                  ? Math.max(0, Math.round((new Date(sta).getTime() - new Date(std).getTime()) / 60000))
+                  : 0;
+
+                return (
+                  <div
+                    key={f.id || idx}
+                    className="p-3 rounded-xl border flex items-center justify-between gap-3 text-xs"
+                    style={{ backgroundColor: THEME.surfaceSubtle, borderColor: THEME.borderLight }}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-7 h-7 rounded-lg bg-sky-500/20 text-sky-400 font-mono font-bold flex items-center justify-center text-xs shrink-0">
+                        S{idx + 1}
+                      </div>
+                      <div>
+                        <div className="font-bold font-mono flex items-center gap-1.5" style={{ color: THEME.text }}>
+                          <span>{callsign}</span>
+                          <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-mono">
+                            {reg}
+                          </span>
+                        </div>
+                        <div className="text-[11px] font-bold text-sky-400 flex items-center gap-1 mt-0.5">
+                          <span>{dep}</span>
+                          <Plane className="w-3 h-3 text-emerald-400 inline" />
+                          <span>{arr}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="text-end font-mono">
+                      <div className="text-[11px] font-bold" style={{ color: THEME.text }}>
+                        {std.length > 10 ? std.slice(11, 16) : std} ➔ {sta.length > 10 ? sta.slice(11, 16) : sta} UTC
+                      </div>
+                      <div className="text-[10px] text-emerald-400 font-semibold">
+                        Block: {fmtDutyHM(blockMin)}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -4873,6 +6009,9 @@ function PortalCard({
   badgeColor = "emerald",
   THEME,
   darkMode = false,
+  portalIconStyle = "vector3d",
+  watermarkLogoUrl = "",
+  watermarkOpacity = 0.18,
 }) {
   const badgeCls =
     badgeColor === "emerald"
@@ -4881,13 +6020,21 @@ function PortalCard({
       ? "bg-gradient-to-r from-rose-500 to-pink-600 text-white shadow-rose-500/30"
       : "bg-gradient-to-r from-sky-500 to-blue-600 text-white shadow-sky-500/30";
 
+  const activeWatermarkUrl = toDisplayImageUrl(watermarkLogoUrl);
+
   return (
     <button
       type="button"
       onClick={onClick}
       className="relative aspect-[1/1] rounded-2xl flex flex-col items-center justify-between p-4 sm:p-5 transition-all duration-300 border group overflow-hidden text-center cursor-pointer select-none active:scale-[0.97]"
       style={{
-        backgroundColor: THEME.card,
+        backgroundColor:
+          portalIconStyle === "watermark_logo"
+            ? darkMode
+              ? "rgba(15, 23, 42, 0.78)"
+              : "rgba(255, 255, 255, 0.88)"
+            : THEME.card,
+        backdropFilter: portalIconStyle === "watermark_logo" ? "blur(12px)" : "none",
         borderColor: THEME.borderLight,
         boxShadow: "0 4px 20px -2px rgba(0, 0, 0, 0.05)",
       }}
@@ -4920,7 +6067,7 @@ function PortalCard({
       ) : null}
 
       <div className="w-full flex-1 flex flex-col items-center justify-center pt-1 z-10">
-        {/* Modern 3D Icon Box */}
+        {/* Modern Icon Box */}
         <div
           className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl flex items-center justify-center mb-3 transition-all duration-300 group-hover:scale-110 shadow-sm relative"
           style={{
@@ -4931,7 +6078,43 @@ function PortalCard({
             boxShadow: `0 8px 20px -6px ${THEME.accent}25`,
           }}
         >
-          {threeDIcon ? (
+          {portalIconStyle === "glassmorphism" ? (
+            <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur-md border border-white/40 flex items-center justify-center shadow-lg">
+              {Icon ? (
+                <Icon className="w-6 h-6 text-white" strokeWidth={2} />
+              ) : (
+                <ThreeDIcon
+                  name={threeDIcon}
+                  size={36}
+                  theme={THEME}
+                  darkMode={darkMode}
+                  interactive={false}
+                />
+              )}
+            </div>
+          ) : portalIconStyle === "watermark_logo" ? (
+            Icon ? (
+              <Icon
+                className="w-7 h-7 sm:w-8 sm:h-8 transition-colors duration-300"
+                style={{ color: THEME.accent }}
+                strokeWidth={2}
+              />
+            ) : (
+              <ThreeDIcon
+                name={threeDIcon}
+                size={46}
+                theme={THEME}
+                darkMode={darkMode}
+                interactive={false}
+              />
+            )
+          ) : portalIconStyle === "minimalist" && Icon ? (
+            <Icon
+              className="w-7 h-7 sm:w-8 sm:h-8 transition-colors duration-300"
+              style={{ color: THEME.accent }}
+              strokeWidth={1.8}
+            />
+          ) : threeDIcon ? (
             <ThreeDIcon
               name={threeDIcon}
               size={46}

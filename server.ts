@@ -590,6 +590,514 @@ async function startServer() {
     }
   });
 
+  // Live Aviation Weather (METAR / TAF) & International NOTAM Proxy with 5-minute TTL cache
+  const airportIntelCache = new Map<string, { expiresAt: number; payload: any }>();
+  let autorouterOAuthCache: { token: string; expiresAt: number } | null = null;
+
+  app.get('/api/airport-intel/:icao', async (req, res) => {
+    const icao = String(req.params.icao || '')
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, '')
+      .slice(0, 4);
+
+    if (!icao || icao.length < 3) {
+      res.status(400).json({ ok: false, error: 'رمز المطار ICAO غير صالح' });
+      return;
+    }
+
+    const forceRefresh = req.query.refresh === '1';
+    const cached = airportIntelCache.get(icao);
+    if (!forceRefresh && cached && cached.expiresAt > Date.now()) {
+      res.json(cached.payload);
+      return;
+    }
+
+    const fetchWithTimeout = async (
+      url: string,
+      init: RequestInit = {},
+      ms = 6000
+    ) => {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), ms);
+      try {
+        return await fetch(url, { ...init, signal: controller.signal });
+      } finally {
+        clearTimeout(timer);
+      }
+    };
+
+    let metar: any = null;
+    let taf: any = null;
+    let notams: any[] = [];
+    let notamError = '';
+
+    const isSet = (val: string | undefined, placeholder: string) => {
+      const v = (val || '').trim();
+      return Boolean(v && v !== placeholder);
+    };
+
+    const notamifyToken = (process.env.NOTAMIFY_TOKEN || '').trim();
+    const notamifyConfigured = isSet(notamifyToken, 'MY_NOTAMIFY_TOKEN');
+
+    const icaoApiKey = (process.env.ICAO_API_KEY || '').trim();
+    const icaoApiConfigured = isSet(icaoApiKey, 'MY_ICAO_API_KEY');
+
+    const avwxToken = (process.env.AVWX_TOKEN || '').trim();
+    const avwxConfigured = isSet(avwxToken, 'MY_AVWX_TOKEN');
+
+    const autorouterStaticToken = (process.env.AUTOROUTER_TOKEN || '').trim();
+    const autorouterUser = (process.env.AUTOROUTER_USERNAME || '').trim();
+    const autorouterPass = (process.env.AUTOROUTER_PASSWORD || '').trim();
+    const autorouterConfigured =
+      isSet(autorouterStaticToken, 'MY_AUTOROUTER_TOKEN') ||
+      (isSet(autorouterUser, 'MY_AUTOROUTER_USERNAME') &&
+        isSet(autorouterPass, 'MY_AUTOROUTER_PASSWORD'));
+
+    const checkwxKey = (process.env.CHECKWX_API_KEY || '').trim();
+    const checkwxConfigured = isSet(checkwxKey, 'MY_CHECKWX_API_KEY');
+
+    const formatUtcShort = (val: any) => {
+      if (!val) return '';
+      const str = String(val).trim();
+      if (/^PERM$/i.test(str)) return 'PERM';
+      const d = new Date(str);
+      if (isNaN(d.getTime())) return str.slice(0, 16);
+      return `${d.toISOString().slice(0, 10)} ${d.toISOString().slice(11, 16)}Z`;
+    };
+
+    const resolveAutorouterToken = async (): Promise<string> => {
+      if (isSet(autorouterStaticToken, 'MY_AUTOROUTER_TOKEN')) {
+        return autorouterStaticToken;
+      }
+      if (autorouterOAuthCache && autorouterOAuthCache.expiresAt > Date.now() + 30000) {
+        return autorouterOAuthCache.token;
+      }
+      if (!autorouterUser || !autorouterPass) return '';
+      try {
+        const body = new URLSearchParams({
+          grant_type: 'password',
+          client_id: 'web',
+          username: autorouterUser,
+          password: autorouterPass,
+        });
+        const resp = await fetchWithTimeout(
+          'https://api.autorouter.aero/v1.0/oauth2/token',
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded',
+              'User-Agent': 'AeroOps-FlightOps/1.0',
+            },
+            body: body.toString(),
+          },
+          6000
+        );
+        if (resp.ok) {
+          const data: any = await resp.json();
+          if (data?.access_token) {
+            const ttl = Math.max(60, Number(data.expires_in) || 3600) * 1000;
+            autorouterOAuthCache = {
+              token: data.access_token,
+              expiresAt: Date.now() + ttl,
+            };
+            return data.access_token;
+          }
+        }
+      } catch {
+        // Ignore OAuth error
+      }
+      return '';
+    };
+
+    const [metarRes, tafRes] = await Promise.allSettled([
+      fetchWithTimeout(
+        `https://aviationweather.gov/api/data/metar?ids=${encodeURIComponent(icao)}&format=json`,
+        { headers: { 'User-Agent': 'AeroOps-FlightOps/1.0', Accept: 'application/json' } },
+        6000
+      ),
+      fetchWithTimeout(
+        `https://aviationweather.gov/api/data/taf?ids=${encodeURIComponent(icao)}&format=json`,
+        { headers: { 'User-Agent': 'AeroOps-FlightOps/1.0', Accept: 'application/json' } },
+        6000
+      ),
+    ]);
+
+    if (metarRes.status === 'fulfilled' && metarRes.value.ok) {
+      try {
+        const arr = await metarRes.value.json();
+        const item = Array.isArray(arr) ? arr[0] : null;
+        if (item && (item.rawOb || item.icaoId)) {
+          const wdir =
+            item.wdir === 'VRB' || item.wdir === 0
+              ? item.wdir === 'VRB'
+                ? 'VRB'
+                : '000'
+              : item.wdir != null
+              ? String(item.wdir).padStart(3, '0')
+              : null;
+          const wspd = item.wspd != null ? Number(item.wspd) : null;
+          const wgst = item.wgst != null ? Number(item.wgst) : null;
+          const windStr =
+            wspd != null
+              ? `${wdir || '---'}°/${wspd}${wgst ? `G${wgst}` : ''}kt`
+              : null;
+
+          metar = {
+            icaoId: item.icaoId || icao,
+            rawOb: item.rawOb || '',
+            obsTime: item.reportTime || item.obsTime || '',
+            temp: item.temp != null ? Number(item.temp) : null,
+            dewp: item.dewp != null ? Number(item.dewp) : null,
+            wdir: item.wdir ?? null,
+            wspd,
+            wgst,
+            windStr,
+            visib: item.visib != null ? String(item.visib) : null,
+            altim: item.altim != null ? Math.round(Number(item.altim)) : null,
+            fltCat: item.fltCat || item.fltcat || null,
+            wxString: item.wxString || null,
+            clouds: Array.isArray(item.clouds) ? item.clouds : [],
+            name: item.name || null,
+          };
+        }
+      } catch {
+        // Ignore parse failure
+      }
+    }
+
+    if (tafRes.status === 'fulfilled' && tafRes.value.ok) {
+      try {
+        const arr = await tafRes.value.json();
+        const item = Array.isArray(arr) ? arr[0] : null;
+        if (item && (item.rawTAF || item.icaoId)) {
+          taf = {
+            icaoId: item.icaoId || icao,
+            rawTAF: item.rawTAF || '',
+            issueTime: item.issueTime || '',
+            validTimeFrom: item.validTimeFrom || null,
+            validTimeTo: item.validTimeTo || null,
+            remarks: item.remarks || '',
+          };
+        }
+      } catch {
+        // Ignore parse failure
+      }
+    }
+
+    let usedNotamSource = notamifyConfigured
+      ? 'NOTAMIFY'
+      : icaoApiConfigured
+      ? 'ICAO'
+      : autorouterConfigured
+      ? 'AUTOROUTER'
+      : avwxConfigured
+      ? 'AVWX'
+      : checkwxConfigured
+      ? 'CHECKWX'
+      : 'ICAO';
+
+    // 1. Notamify Worldwide NOTAMs
+    if (notamifyConfigured) {
+      try {
+        const resp = await fetchWithTimeout(
+          `https://api.notamify.com/api/v2/notams?location=${encodeURIComponent(icao)}&per_page=15`,
+          {
+            headers: {
+              Authorization: `Bearer ${notamifyToken}`,
+              'User-Agent': 'AeroOps-FlightOps/1.0',
+              Accept: 'application/json',
+            },
+          },
+          7000
+        );
+        if (resp.ok) {
+          const parsed: any = await resp.json();
+          const list = Array.isArray(parsed?.notams)
+            ? parsed.notams
+            : Array.isArray(parsed?.data)
+            ? parsed.data
+            : Array.isArray(parsed)
+            ? parsed
+            : [];
+          notams = list.slice(0, 15).map((n: any, i: number) => {
+            const num = String(n.notam_number || n.notamNumber || n.id || `NTM-${i + 1}`);
+            const rawMsg = String(n.icao_message || n.message || '').trim();
+            const interp = n.interpretation && typeof n.interpretation === 'object' ? n.interpretation : null;
+            const affected = Array.isArray(interp?.affected_elements) ? interp.affected_elements : [];
+            const hasClosedEffect = affected.some((el: any) => {
+              const eff = String(el?.effect || '').toUpperCase();
+              const typ = String(el?.type || '').toUpperCase();
+              return eff === 'CLOSED' && ['AIRPORT', 'AERODROME', 'AD', 'RUNWAY', 'RWY'].includes(typ);
+            });
+            const hasRestrictedEffect = affected.some(
+              (el: any) => String(el?.effect || '').toUpperCase() === 'RESTRICTED'
+            );
+            const isTextClosed = /\b(AD CLSD|AIRPORT CLOSED|AERODROME CLOSED|RWY\s*\S*\s*CLSD)\b/i.test(rawMsg);
+            return {
+              id: String(n.id || num),
+              number: num,
+              classification: String(n.classification || interp?.category || 'INTL'),
+              qCode: String(n.qcode || n.Qcode || ''),
+              category: String(interp?.category || ''),
+              subcategory: String(interp?.subcategory || ''),
+              excerpt: String(interp?.excerpt || ''),
+              affectedElements: affected.slice(0, 4).map((el: any) => ({
+                type: String(el?.type || ''),
+                identifier: String(el?.identifier || el?.name || ''),
+                effect: String(el?.effect || ''),
+              })),
+              effectiveStart: formatUtcShort(n.starts_at || n.startsAt),
+              effectiveEnd: formatUtcShort(n.ends_at || n.endsAt) || 'PERM',
+              text: rawMsg,
+              isClosed: hasClosedEffect || isTextClosed,
+              isRestricted: !hasClosedEffect && !isTextClosed && hasRestrictedEffect,
+              source: 'NOTAMIFY',
+            };
+          });
+          if (notams.length > 0) usedNotamSource = 'NOTAMIFY';
+        } else {
+          if (resp.status === 401) notamError = 'NOTAMIFY_UNAUTHORIZED';
+          else if (resp.status === 403) notamError = 'NOTAMIFY_QUOTA_EXCEEDED';
+          else if (resp.status === 429) notamError = 'NOTAMIFY_RATE_LIMITED';
+        }
+      } catch {
+        // Cascade to next provider
+      }
+    }
+
+    // 2. ICAO Data Services
+    if (notams.length === 0 && icaoApiConfigured) {
+      try {
+        const resp = await fetchWithTimeout(
+          `https://dataservices.icao.int/api/notams-realtime-list?api_key=${encodeURIComponent(
+            icaoApiKey
+          )}&locations=${encodeURIComponent(icao)}`,
+          { headers: { 'User-Agent': 'AeroOps-FlightOps/1.0', Accept: 'application/json' } },
+          6500
+        );
+        if (resp.ok) {
+          const rawTxt = await resp.text();
+          const trimmed = rawTxt.trim();
+          if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
+            const parsed = JSON.parse(trimmed);
+            const list = Array.isArray(parsed)
+              ? parsed
+              : Array.isArray(parsed?.data)
+              ? parsed.data
+              : Array.isArray(parsed?.notams)
+              ? parsed.notams
+              : [];
+            notams = list.slice(0, 15).map((n: any, i: number) => {
+              const fullText = String(n.all || n.message || n.Message || '').trim();
+              const qCode = String(n.Qcode || n.qcode || '').trim();
+              return {
+                id: String(n.id || n.key || `icao_notam_${i}`),
+                number: String(n.id || n.key || `ICAO-${i + 1}`),
+                classification: String(n.type || qCode || n.StateName || 'ICAO INTL'),
+                qCode,
+                stateName: String(n.StateName || ''),
+                effectiveStart: formatUtcShort(n.startdate || n.startDate || n.Created),
+                effectiveEnd: formatUtcShort(n.enddate || n.endDate) || 'PERM',
+                text: fullText,
+                isClosed:
+                  /\b(CLSD|CLOSED|AD CLSD|RWY CLSD)\b/i.test(fullText) ||
+                  /^Q(M|F|A)[A-Z]*LC/i.test(qCode),
+                isRestricted: /\b(RSTD|RESTRICTED|PPR)\b/i.test(fullText),
+                source: 'ICAO',
+              };
+            });
+            if (notams.length > 0) {
+              usedNotamSource = 'ICAO';
+              notamError = '';
+            }
+          }
+        }
+      } catch {
+        // Cascade to next provider
+      }
+    }
+
+    // 3. Autorouter Eurocontrol EAD International NOTAMs
+    if (notams.length === 0 && autorouterConfigured) {
+      try {
+        const arToken = await resolveAutorouterToken();
+        if (arToken) {
+          const resp = await fetchWithTimeout(
+            `https://api.autorouter.aero/v1.0/pams/notam?itemas=${encodeURIComponent(
+              JSON.stringify([icao])
+            )}&limit=15`,
+            {
+              headers: {
+                Authorization: `Bearer ${arToken}`,
+                'User-Agent': 'AeroOps-FlightOps/1.0',
+                Accept: 'application/json',
+              },
+            },
+            6500
+          );
+          if (resp.ok) {
+            const parsed: any = await resp.json();
+            const list = Array.isArray(parsed?.rows)
+              ? parsed.rows
+              : Array.isArray(parsed?.data)
+              ? parsed.data
+              : Array.isArray(parsed)
+              ? parsed
+              : [];
+            notams = list.slice(0, 15).map((n: any, i: number) => {
+              const num = `${n.series || ''}${String(n.number || '').padStart(4, '0')}/${String(n.year || '').slice(-2)}` || `EAD-${i + 1}`;
+              const text = String(n.iteme || n.text || n.raw || '').trim();
+              const qCode = String(n.code23 ? `Q${n.code23}${n.code45 || ''}` : n.qcode || '');
+              return {
+                id: String(n.id || num),
+                number: num,
+                classification: String(n.type || 'EAD INTL'),
+                qCode,
+                effectiveStart: formatUtcShort(n.startvalidity ? Number(n.startvalidity) * 1000 : n.start),
+                effectiveEnd: n.endvalidity
+                  ? formatUtcShort(Number(n.endvalidity) * 1000)
+                  : n.estimation || 'PERM',
+                text,
+                isClosed: /\b(AD CLSD|AIRPORT CLOSED|AERODROME CLOSED|RWY\s*\S*\s*CLSD)\b/i.test(text) || /^Q(M|F|A)[A-Z]*LC/i.test(qCode),
+                isRestricted: /\b(RSTD|RESTRICTED|PPR)\b/i.test(text),
+                source: 'AUTOROUTER EAD',
+              };
+            });
+            if (notams.length > 0) {
+              usedNotamSource = 'AUTOROUTER EAD';
+              notamError = '';
+            }
+          }
+        }
+      } catch {
+        // Cascade to next provider
+      }
+    }
+
+    // 4. AVWX Worldwide NOTAMs
+    if (notams.length === 0 && avwxConfigured) {
+      try {
+        const resp = await fetchWithTimeout(
+          `https://avwx.rest/api/notam/${encodeURIComponent(icao)}`,
+          {
+            headers: {
+              Authorization: `BEARER ${avwxToken}`,
+              'User-Agent': 'AeroOps-FlightOps/1.0',
+              Accept: 'application/json',
+            },
+          },
+          6500
+        );
+        if (resp.ok) {
+          const parsed: any = await resp.json();
+          const list = Array.isArray(parsed?.data)
+            ? parsed.data
+            : Array.isArray(parsed?.notams)
+            ? parsed.notams
+            : Array.isArray(parsed)
+            ? parsed
+            : [];
+          notams = list.slice(0, 15).map((n: any, i: number) => {
+            const text = String(n.body || n.raw || n.text || '').trim();
+            const qCode = String(n.qualifiers?.repr || n.qcode || '');
+            return {
+              id: String(n.number || `avwx_${i}`),
+              number: String(n.number || `AVWX-${i + 1}`),
+              classification: String(n.type?.repr || n.type || 'AVWX INTL'),
+              qCode,
+              effectiveStart: formatUtcShort(n.starttime?.dt || n.start_time || n.starttime),
+              effectiveEnd: formatUtcShort(n.endtime?.dt || n.end_time || n.endtime) || 'PERM',
+              text,
+              isClosed: /\b(AD CLSD|AIRPORT CLOSED|AERODROME CLOSED|RWY\s*\S*\s*CLSD)\b/i.test(text),
+              isRestricted: /\b(RSTD|RESTRICTED|PPR)\b/i.test(text),
+              source: 'AVWX',
+            };
+          });
+          if (notams.length > 0) {
+            usedNotamSource = 'AVWX';
+            notamError = '';
+          }
+        }
+      } catch {
+        // Cascade to next provider
+      }
+    }
+
+    // 5. CheckWX Global NOTAMs
+    if (notams.length === 0 && checkwxConfigured) {
+      try {
+        const resp = await fetchWithTimeout(
+          `https://api.checkwx.com/notam/${encodeURIComponent(icao)}`,
+          {
+            headers: {
+              'X-API-Key': checkwxKey,
+              'User-Agent': 'AeroOps-FlightOps/1.0',
+              Accept: 'application/json',
+            },
+          },
+          6500
+        );
+        if (resp.ok) {
+          const parsed: any = await resp.json();
+          const list = Array.isArray(parsed?.data) ? parsed.data : [];
+          notams = list.slice(0, 15).map((n: any, i: number) => {
+            const text = typeof n === 'string' ? n : String(n.raw_text || n.text || n.message || '').trim();
+            const num = String(n?.id || n?.notam_number || `CHECKWX-${i + 1}`);
+            return {
+              id: num,
+              number: num,
+              classification: 'CHECKWX INTL',
+              qCode: String(n?.qcode || ''),
+              effectiveStart: formatUtcShort(n?.effective_start || n?.start),
+              effectiveEnd: formatUtcShort(n?.effective_end || n?.end) || 'PERM',
+              text,
+              isClosed: /\b(AD CLSD|AIRPORT CLOSED|AERODROME CLOSED|RWY\s*\S*\s*CLSD)\b/i.test(text),
+              isRestricted: /\b(RSTD|RESTRICTED|PPR)\b/i.test(text),
+              source: 'CHECKWX',
+            };
+          });
+          if (notams.length > 0) {
+            usedNotamSource = 'CHECKWX';
+            notamError = '';
+          }
+        }
+      } catch {
+        // End of cascade
+      }
+    }
+
+    const anyNotamSourceConfigured =
+      notamifyConfigured ||
+      icaoApiConfigured ||
+      autorouterConfigured ||
+      avwxConfigured ||
+      checkwxConfigured;
+
+    const payload = {
+      ok: true,
+      icao,
+      metar,
+      taf,
+      notams,
+      notamSource: usedNotamSource,
+      notamifyConfigured,
+      icaoApiConfigured,
+      autorouterConfigured,
+      avwxConfigured,
+      checkwxConfigured,
+      anyNotamSourceConfigured,
+      notamError,
+      fetchedAt: new Date().toISOString(),
+    };
+
+    airportIntelCache.set(icao, {
+      expiresAt: Date.now() + (anyNotamSourceConfigured ? 10 : 5) * 60 * 1000,
+      payload,
+    });
+
+    res.json(payload);
+  });
+
   // AI-Powered Smart Aviation Document & Form Scanner / Auto-Filler
   app.post('/api/ai/parse-form', async (req, res) => {
     try {
@@ -612,29 +1120,36 @@ async function startServer() {
 
       const flightContextSummary = `
 Target Flight Data to Auto-Fill:
-- Flight Number: ${flightData.flightNo || '—'}
-- Call Sign: ${flightData.callsign || flightData.flightNo || '—'}
-- Date of Flight: ${flightData.date || flightData.stdDate || '—'}
-- Departure Airport (ICAO/IATA): ${flightData.dep || '—'}
-- Destination Airport (ICAO/IATA): ${flightData.arr || '—'}
-- Route / Sectors: ${flightData.route || (flightData.dep && flightData.arr ? `${flightData.dep}-${flightData.arr}` : '—')}
-- Scheduled Departure Time (STD UTC): ${flightData.stdTime || (flightData.std ? String(flightData.std).slice(11, 16) : '—')}
-- Scheduled Arrival Time (STA UTC): ${flightData.staTime || (flightData.sta ? String(flightData.sta).slice(11, 16) : '—')}
-- Aircraft Registration: ${flightData.acft || flightData.aircraftReg || '—'}
-- Aircraft Type / ICAO: ${flightData.aircraftType || flightData.acftType || '—'}
-- MTOW (Max Takeoff Weight): ${flightData.mtow || '—'}
-- Pilot in Command (Captain / PIC): ${flightData.picName || flightData.pic || '—'}
-- PIC License No: ${flightData.picLicense || '—'}
-- PIC Passport No: ${flightData.picPassport || '—'}
-- First Officer (SIC / FO): ${flightData.foName || flightData.fo || '—'}
-- FO License No: ${flightData.foLicense || '—'}
-- Passenger Count: ${flightData.pax != null ? flightData.pax : '0'}
-- Cargo Weight (kg): ${flightData.cargo != null ? flightData.cargo : '0'}
-- Operator Company Name: ${flightData.companyName || flightData.companyNameEn || 'AeroOps'}
-- Operator Code: ${flightData.operatorCode || 'EACS'}
-- Handling Agent: ${flightData.handlingAgent || '—'}
-- Flight Purpose: ${flightData.flightType || 'NON-SCHEDULED / CHARTER / OFFICIAL'}
-- Permits Text: ${flightData.permits || '—'}
+- flightNo (Flight Number): ${flightData.flightNo || '—'}
+- date (Date of Flight YYYY-MM-DD): ${flightData.date || flightData.stdDate || '—'}
+- departure (ADEP ICAO): ${flightData.dep || flightData.departure || '—'}
+- departureFull (ADEP Full): ${flightData.departureFull || flightData.dep || '—'}
+- arrival (ADES ICAO): ${flightData.arr || flightData.arrival || '—'}
+- arrivalFull (ADES Full): ${flightData.arrivalFull || flightData.arr || '—'}
+- route (Route / Sectors): ${flightData.route || (flightData.dep && flightData.arr ? `${flightData.dep}-${flightData.arr}` : '—')}
+- std (STD UTC HH:MMZ): ${flightData.stdTime || flightData.std || '—'}
+- sta (STA UTC HH:MMZ): ${flightData.staTime || flightData.sta || '—'}
+- altn (Alternate ICAO): ${flightData.altn || '—'}
+- aircraft (Aircraft Registration): ${flightData.acft || flightData.aircraft || flightData.aircraftReg || '—'}
+- aircraftType (Aircraft Type / ICAO): ${flightData.aircraftType || flightData.acftType || '—'}
+- seatCapacity / mtow: ${flightData.seatCapacity || flightData.mtow || '—'}
+- flightType / flightNature / purpose: ${flightData.flightType || 'CHARTER'} / ${flightData.flightNature || 'PAX'}
+- picName (Captain / PIC): ${flightData.picName || flightData.pic || '—'}
+- picLicense: ${flightData.picLicense || '—'}
+- picPassport: ${flightData.picPassport || '—'}
+- picNationality: ${flightData.picNationality || '—'}
+- foName (First Officer / SIC): ${flightData.foName || flightData.fo || '—'}
+- foLicense: ${flightData.foLicense || '—'}
+- foPassport: ${flightData.foPassport || '—'}
+- pax (Passenger Count): ${flightData.pax != null ? flightData.pax : '0'}
+- cargo (Cargo Weight kg): ${flightData.cargo != null ? flightData.cargo : '0'}
+- operatorName (Company Name EN): ${flightData.operatorName || flightData.companyName || 'Flight Operations'}
+- operatorNameAr (Company Name AR): ${flightData.operatorNameAr || flightData.companyNameAr || ''}
+- operatorCode (ICAO Operator Code): ${flightData.operatorCode || 'EACS'}
+- phone / email / sita / address / contactPerson: ${flightData.phone || ''} / ${flightData.email || ''} / ${flightData.sita || ''}
+- handlingAgent: ${flightData.handlingAgent || '—'}
+- permitsNotes: ${flightData.permits || '—'}
+- preparedBy: ${flightData.preparedBy || 'Flight Dispatch'}
 `;
 
       if (apiKey) {
@@ -650,42 +1165,55 @@ Target Flight Data to Auto-Fill:
 
           const prompt = `
 You are an ultra-smart aviation document & form OCR layout analysis AI engine.
-IMPORTANT: The user wants to keep the EXACT ORIGINAL DOCUMENT FILE (PDF / image / original template) completely intact, and write text DIRECTLY ON TOP of its existing form boxes/lines.
+IMPORTANT: The user uploaded an aviation form (image, PDF, or HTML). Analyze every visual box, table cell, blank line, or field on the form and map it to AeroOps system keys so it can be auto-filled accurately on both the original document overlay AND as a clean printable HTML template.
+
+Use these EXACT AeroOps 'systemKey' identifiers whenever a field matches (otherwise set systemKey to "" and use a descriptive camelCase key):
+- Flight 1: flightNo, date, departure, departureFull, arrival, arrivalFull, std, sta, route, altn, flightType, flightNature, purpose, pax, cargo, aircraft, aircraftType, picName
+- Flight 2 (Return/Leg 2): flightNo_2, date_2, departure_2, arrival_2, std_2, sta_2, route_2, pax_2, cargo_2, aircraft_2, picName_2
+- Flight 3 / 4: flightNo_3, date_3, departure_3, arrival_3, std_3, sta_3, flightNo_4, date_4, departure_4, arrival_4, std_4, sta_4
+- Combined Multi-Flight: allFlightNos, allRoutes, allDates, allAircraft, totalPax, totalCargo, flightsCount, sectorsTableHtml, crewTableHtml
+- Aircraft & CAMO: coaExpiry, insuranceExpiry, noiseCertExpiry, seatCapacity
+- Crew & JL: picLicense, picPassport, picNationality, crewCount, crew, foName, foLicense, foPassport, actualStd, takeoff, landing, actualSta, blockTime, blockFuel, fuelUsed, fuelRemaining, delayCode
+- Operator: operatorName, operatorNameAr, operatorCode, operatorCountry, address, phone, fax, email, sita, contactPerson, preparedBy
+- Common Manual Permit/Ops fields: entryPoint, exitPoint, atsRoute, handlingAgent, receivingParty, billingAddress, permitNo, issuedDate, expiryDate, permitsNotes
 
 ${flightContextSummary}
 
 Tasks:
-1. Identify the document title, issuing Civil Aviation Authority / Operator, country, and document type (PERMIT or OPERATIONAL_FORM).
-2. Detect EVERY fillable field, box, line, or table cell intended to be filled in this original document layout.
-3. For each detected field, calculate its exact 2D overlay bounding box on a standard A4 page grid (595 width x 842 height):
-   - 'key': unique camelCase key (e.g. flightNo, date, departure, arrival, stdTime, staTime, aircraftReg, aircraftType, picName, foName, paxCount, cargoWeight, operatorName, operatorCode, handlingAgent, entryPoint, exitPoint, permitRef, etc.).
-   - 'label': clear English & Arabic label (e.g. "Flight Number / رقم الرحلة").
-   - 'value': auto-populated value mapped from Flight Data whenever a match exists, or extracted text from document.
-   - 'mappedFromFlight': true if auto-filled from system flight data, false if manual/missing.
+1. Identify the document title (Arabic or English), issuing Civil Aviation Authority / Operator, country, category ('Ground Ops' | 'Dispatch' | 'Handling' | 'Crew & GenDec' | 'Load & Fuel' | 'Safety & Security' | 'General'), and document type (PERMIT or OPERATIONAL_FORM).
+2. Detect EVERY fillable field, box, underline, checkbox, or table cell intended to be filled in the uploaded document.
+3. For each detected field:
+   - 'key': matching AeroOps systemKey above if applicable, else unique camelCase key.
+   - 'systemKey': exact AeroOps systemKey string above if mapped from system data, else "".
+   - 'label': clear bilingual label (e.g. "Flight Number / رقم الرحلة").
+   - 'value': auto-populated value from Target Flight Data if systemKey matches (never invent fake flight numbers), else "".
+   - 'mappedFromFlight': true if systemKey maps to system data, false if manual/unlinked.
    - 'category': 'flight' | 'aircraft' | 'crew' | 'operator' | 'route' | 'manual'.
-   - 'align': "center" (default centered placement inside original box boundary).
-   - 'box': exact 2D bounding box coordinates on the ORIGINAL page:
-     { "x": number (0..595), "y": number (bottom-up: 0 at page bottom, 842 at page top), "width": number (box width in points), "height": number (box height in points), "page": number (0-indexed page number) }.
-   - 'fontSize': recommended font size in points (between 8 and 14) so text stays strictly centered inside the box boundary.
-4. Identify any required fields that are MISSING or require manual entry.
-5. Generate 'formattedHtml' as a clean summary representation if needed.
+   - 'align': "center" | "left" | "right".
+   - 'box': exact 2D bounding box on a 595x842 A4 page grid where text should be written DIRECTLY inside the blank value slot (NOT covering the printed label!):
+     { "x": number (0..595), "y": number (bottom-up: 0 at page bottom, 842 at page top), "width": number, "height": number, "page": number (0-indexed) }.
+   - 'fontSize': number between 8 and 13.
+4. Put unlinked/manual required fields in 'missingFields' as well.
+5. Generate 'formattedHtml': a clean, print-ready A4 HTML recreation of the uploaded form's layout/tables/sections using {{systemKey}} placeholders inside value cells (matching the exact detected keys).
 
-Return STRICT JSON ONLY, adhering to this structure:
+Return STRICT JSON ONLY:
 {
   "title": "string",
   "documentType": "PERMIT" | "OPERATIONAL_FORM",
+  "category": "Ground Ops" | "Dispatch" | "Handling" | "Crew & GenDec" | "Load & Fuel" | "Safety & Security" | "General",
   "country": "string",
   "authority": "string",
   "detectedFields": [
     {
       "key": "string",
+      "systemKey": "string",
       "label": "string",
       "value": "string",
       "mappedFromFlight": boolean,
       "category": "flight" | "aircraft" | "crew" | "operator" | "route" | "manual",
       "align": "center",
-      "box": { "x": 120, "y": 720, "width": 140, "height": 22, "page": 0 },
-      "fontSize": 11
+      "box": { "x": 180, "y": 720, "width": 140, "height": 20, "page": 0 },
+      "fontSize": 10
     }
   ],
   "missingFields": [
@@ -719,7 +1247,7 @@ Return STRICT JSON ONLY, adhering to this structure:
           contents.push({ text: prompt });
 
           const response = await ai.models.generateContent({
-            model: 'gemini-3.8-flash',
+            model: 'gemini-4-hydrogen',
             contents,
             config: {
               responseMimeType: 'application/json',
@@ -748,100 +1276,101 @@ Return STRICT JSON ONLY, adhering to this structure:
         }
       }
 
-      // High-Quality Fallback Heuristic Parser (extracts aviation fields from tokens, text, & flight data)
+      // High-Quality Fallback Heuristic Parser (aligned with SYSTEM_DATA_CATALOG keys)
       const flightNo = flightData.flightNo || 'LN-101';
-      const dep = flightData.dep || 'HLLT';
-      const arr = flightData.arr || 'HECA';
+      const dep = flightData.dep || flightData.departure || 'HLLT';
+      const arr = flightData.arr || flightData.arrival || 'HECA';
       const date = flightData.date || flightData.stdDate || new Date().toISOString().slice(0, 10);
-      const acft = flightData.acft || flightData.aircraftReg || '5A-ONE';
+      const acft = flightData.acft || flightData.aircraft || flightData.aircraftReg || '5A-ONE';
       const acftType = flightData.aircraftType || 'A320';
-      const operator = flightData.companyName || 'AeroOps Flight Operations';
+      const operator = flightData.operatorName || flightData.companyName || 'Flight Operations';
       const opCode = flightData.operatorCode || 'EACS';
       const pic = flightData.picName || flightData.pic || 'Capt. Pilot';
       const fo = flightData.foName || flightData.fo || 'First Officer';
-      const pax = flightData.pax != null ? String(flightData.pax) : '4';
-      const cargo = flightData.cargo != null ? String(flightData.cargo) : '150';
+      const pax = flightData.pax != null ? String(flightData.pax) : '0';
+      const cargo = flightData.cargo != null ? String(flightData.cargo) : '0';
+      const std = flightData.stdTime || flightData.std || '10:00Z';
+      const sta = flightData.staTime || flightData.sta || '13:30Z';
 
       const detectedFields = [
-        { key: 'flightNo', label: 'Flight Number / رقم الرحلة', value: flightNo, mappedFromFlight: true, category: 'flight' },
-        { key: 'callsign', label: 'Call Sign / إشارة النداء', value: flightData.callsign || flightNo, mappedFromFlight: true, category: 'flight' },
-        { key: 'flightDate', label: 'Date of Flight / تاريخ الرحلة', value: date, mappedFromFlight: true, category: 'flight' },
-        { key: 'departure', label: 'Departure Airport (ICAO) / مطار الإقلاع', value: dep, mappedFromFlight: true, category: 'route' },
-        { key: 'destination', label: 'Destination Airport (ICAO) / مطار الهبوط', value: arr, mappedFromFlight: true, category: 'route' },
-        { key: 'route', label: 'Route & Sectors / المسار والقطاعات', value: `${dep} - ${arr}`, mappedFromFlight: true, category: 'route' },
-        { key: 'stdTime', label: 'Estimated Departure (STD UTC) / موعد الإقلاع', value: flightData.stdTime || '10:00 UTC', mappedFromFlight: true, category: 'flight' },
-        { key: 'staTime', label: 'Estimated Arrival (STA UTC) / موعد الوصول', value: flightData.staTime || '13:30 UTC', mappedFromFlight: true, category: 'flight' },
-        { key: 'aircraftReg', label: 'Aircraft Registration / تسجيل الطائرة', value: acft, mappedFromFlight: true, category: 'aircraft' },
-        { key: 'aircraftType', label: 'Aircraft Type & ICAO / طراز الطائرة', value: acftType, mappedFromFlight: true, category: 'aircraft' },
-        { key: 'mtow', label: 'MTOW / أقصى وزن إقلاع (كغم)', value: flightData.mtow || '77000 KG', mappedFromFlight: true, category: 'aircraft' },
-        { key: 'operatorName', label: 'Operator Name / اسم المشغل الجوي', value: operator, mappedFromFlight: true, category: 'operator' },
-        { key: 'operatorCode', label: 'Operator Code / كود المشغل', value: opCode, mappedFromFlight: true, category: 'operator' },
-        { key: 'picName', label: 'Pilot in Command (PIC) / قائد الطائرة', value: pic, mappedFromFlight: true, category: 'crew' },
-        { key: 'foName', label: 'First Officer (SIC) / المساعد الأول', value: fo, mappedFromFlight: true, category: 'crew' },
-        { key: 'paxCount', label: 'Passenger Count / عدد الركاب', value: pax, mappedFromFlight: true, category: 'flight' },
-        { key: 'cargoWeight', label: 'Cargo Weight / وزن الشحن', value: `${cargo} KG`, mappedFromFlight: true, category: 'flight' },
+        { key: 'flightNo', systemKey: 'flightNo', label: 'Flight Number / رقم الرحلة', value: flightNo, mappedFromFlight: true, category: 'flight', box: { x: 170, y: 695, width: 120, height: 20, page: 0 }, fontSize: 10 },
+        { key: 'date', systemKey: 'date', label: 'Date of Flight / تاريخ الرحلة', value: date, mappedFromFlight: true, category: 'flight', box: { x: 390, y: 695, width: 120, height: 20, page: 0 }, fontSize: 10 },
+        { key: 'departure', systemKey: 'departure', label: 'Departure Airport (ICAO) / مطار الإقلاع', value: dep, mappedFromFlight: true, category: 'route', box: { x: 170, y: 660, width: 120, height: 20, page: 0 }, fontSize: 10 },
+        { key: 'arrival', systemKey: 'arrival', label: 'Destination Airport (ICAO) / مطار الهبوط', value: arr, mappedFromFlight: true, category: 'route', box: { x: 390, y: 660, width: 120, height: 20, page: 0 }, fontSize: 10 },
+        { key: 'route', systemKey: 'route', label: 'Route & Sectors / المسار والقطاعات', value: `${dep} - ${arr}`, mappedFromFlight: true, category: 'route', box: { x: 170, y: 625, width: 220, height: 20, page: 0 }, fontSize: 10 },
+        { key: 'std', systemKey: 'std', label: 'STD (UTC) / موعد الإقلاع', value: std, mappedFromFlight: true, category: 'flight', box: { x: 170, y: 590, width: 120, height: 20, page: 0 }, fontSize: 10 },
+        { key: 'sta', systemKey: 'sta', label: 'STA (UTC) / موعد الوصول', value: sta, mappedFromFlight: true, category: 'flight', box: { x: 390, y: 590, width: 120, height: 20, page: 0 }, fontSize: 10 },
+        { key: 'aircraft', systemKey: 'aircraft', label: 'Aircraft Registration / تسجيل الطائرة', value: acft, mappedFromFlight: true, category: 'aircraft', box: { x: 170, y: 555, width: 120, height: 20, page: 0 }, fontSize: 10 },
+        { key: 'aircraftType', systemKey: 'aircraftType', label: 'Aircraft Type & ICAO / طراز الطائرة', value: acftType, mappedFromFlight: true, category: 'aircraft', box: { x: 390, y: 555, width: 120, height: 20, page: 0 }, fontSize: 10 },
+        { key: 'operatorName', systemKey: 'operatorName', label: 'Operator Name / اسم المشغل الجوي', value: operator, mappedFromFlight: true, category: 'operator', box: { x: 170, y: 520, width: 200, height: 20, page: 0 }, fontSize: 10 },
+        { key: 'operatorCode', systemKey: 'operatorCode', label: 'Operator Code / كود المشغل', value: opCode, mappedFromFlight: true, category: 'operator', box: { x: 420, y: 520, width: 90, height: 20, page: 0 }, fontSize: 10 },
+        { key: 'picName', systemKey: 'picName', label: 'Pilot in Command (PIC) / قائد الطائرة', value: pic, mappedFromFlight: true, category: 'crew', box: { x: 170, y: 485, width: 160, height: 20, page: 0 }, fontSize: 10 },
+        { key: 'foName', systemKey: 'foName', label: 'First Officer (SIC) / المساعد الأول', value: fo, mappedFromFlight: true, category: 'crew', box: { x: 390, y: 485, width: 150, height: 20, page: 0 }, fontSize: 10 },
+        { key: 'pax', systemKey: 'pax', label: 'Passenger Count / عدد الركاب', value: pax, mappedFromFlight: true, category: 'flight', box: { x: 170, y: 450, width: 90, height: 20, page: 0 }, fontSize: 10 },
+        { key: 'cargo', systemKey: 'cargo', label: 'Cargo Weight / وزن الشحن', value: `${cargo} KG`, mappedFromFlight: true, category: 'flight', box: { x: 390, y: 450, width: 90, height: 20, page: 0 }, fontSize: 10 },
       ];
 
       const missingFields = [
-        { key: 'entryPoint', label: 'Entry Waypoint & Time / نقطة ووقت الدخول الجوي', placeholder: 'e.g. TRL / TRP 11:20 UTC', value: '', required: true },
-        { key: 'exitPoint', label: 'Exit Waypoint & Time / نقطة ووقت الخروج الجوي', placeholder: 'e.g. SALUM 12:45 UTC', value: '', required: true },
+        { key: 'entryPoint', label: 'Entry Waypoint & Time / نقطة ووقت الدخول الجوي', placeholder: 'e.g. TRL / TRP 11:20 UTC', value: '', required: false },
+        { key: 'exitPoint', label: 'Exit Waypoint & Time / نقطة ووقت الخروج الجوي', placeholder: 'e.g. SALUM 12:45 UTC', value: '', required: false },
         { key: 'handlingAgent', label: 'Local Ground Handling Agent / وكيل المناولة الأرضية', placeholder: 'e.g. EAS Ground Services', value: flightData.handlingAgent || '', required: false },
-        { key: 'permitRef', label: 'Diplomatic / CAA Clearance Ref / رقم إذن العبور أو الهبوط', placeholder: 'CAA/PERMIT/2025/...', value: '', required: false },
-        { key: 'purposeOfFlight', label: 'Purpose of Flight / الغرض من الرحلة', placeholder: 'VIP Official Government Flight', value: 'VIP Official Flight', required: false },
+        { key: 'permitNo', label: 'Clearance Ref / رقم التصريح أو المرجع', placeholder: 'CAA/PERMIT/...', value: '', required: false },
       ];
 
       const formattedHtml = `
 <div style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; border: 2px solid #1e3a8a; background: #fff; color: #1e293b;">
   <div style="text-align: center; border-bottom: 2px solid #1e3a8a; padding-bottom: 12px; margin-bottom: 18px;">
-    <h2 style="margin: 0; color: #1e3a8a; text-transform: uppercase;">Flight Operation & Overflight / Landing Permit Application</h2>
-    <div style="font-size: 13px; font-weight: bold; color: #475569; margin-top: 4px;">ICAO STANDARD FLIGHT CLEARANCE REQUEST FORM</div>
+    <h2 style="margin: 0; color: #1e3a8a; text-transform: uppercase;">Operational & Flight Clearance Form</h2>
+    <div style="font-size: 13px; font-weight: bold; color: #475569; margin-top: 4px;">{{operatorName}} ({{operatorCode}})</div>
   </div>
   <table style="width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 14px;">
     <tbody>
       <tr>
-        <td style="padding: 6px 10px; border: 1px solid #cbd5e1; background: #f8fafc; font-weight: bold; width: 30%;">Operator / المشغل:</td>
-        <td style="padding: 6px 10px; border: 1px solid #cbd5e1; font-weight: bold; color: #0369a1;">${operator} (${opCode})</td>
+        <td style="padding: 6px 10px; border: 1px solid #cbd5e1; background: #f8fafc; font-weight: bold; width: 25%;">Operator / المشغل:</td>
+        <td style="padding: 6px 10px; border: 1px solid #cbd5e1; font-weight: bold; color: #0369a1;">{{operatorName}} ({{operatorCode}})</td>
         <td style="padding: 6px 10px; border: 1px solid #cbd5e1; background: #f8fafc; font-weight: bold; width: 25%;">Flight No / رقم الرحلة:</td>
-        <td style="padding: 6px 10px; border: 1px solid #cbd5e1; font-weight: bold; font-family: monospace; color: #1e3a8a;">${flightNo}</td>
+        <td style="padding: 6px 10px; border: 1px solid #cbd5e1; font-weight: bold; font-family: monospace; color: #1e3a8a;">{{flightNo}}</td>
       </tr>
       <tr>
         <td style="padding: 6px 10px; border: 1px solid #cbd5e1; background: #f8fafc; font-weight: bold;">Aircraft Reg / التسجيل:</td>
-        <td style="padding: 6px 10px; border: 1px solid #cbd5e1; font-weight: bold; font-family: monospace;">${acft}</td>
+        <td style="padding: 6px 10px; border: 1px solid #cbd5e1; font-weight: bold; font-family: monospace;">{{aircraft}}</td>
         <td style="padding: 6px 10px; border: 1px solid #cbd5e1; background: #f8fafc; font-weight: bold;">Type / الطراز:</td>
-        <td style="padding: 6px 10px; border: 1px solid #cbd5e1;">${acftType} (MTOW: ${flightData.mtow || '77T'})</td>
+        <td style="padding: 6px 10px; border: 1px solid #cbd5e1;">{{aircraftType}}</td>
       </tr>
       <tr>
         <td style="padding: 6px 10px; border: 1px solid #cbd5e1; background: #f8fafc; font-weight: bold;">Departure / المغادرة:</td>
-        <td style="padding: 6px 10px; border: 1px solid #cbd5e1; font-weight: bold;">${dep} — STD: ${flightData.stdTime || '10:00 UTC'}</td>
+        <td style="padding: 6px 10px; border: 1px solid #cbd5e1; font-weight: bold;">{{departure}} — STD: {{std}}</td>
         <td style="padding: 6px 10px; border: 1px solid #cbd5e1; background: #f8fafc; font-weight: bold;">Destination / الوصول:</td>
-        <td style="padding: 6px 10px; border: 1px solid #cbd5e1; font-weight: bold;">${arr} — STA: ${flightData.staTime || '13:30 UTC'}</td>
+        <td style="padding: 6px 10px; border: 1px solid #cbd5e1; font-weight: bold;">{{arrival}} — STA: {{sta}}</td>
       </tr>
       <tr>
         <td style="padding: 6px 10px; border: 1px solid #cbd5e1; background: #f8fafc; font-weight: bold;">Date of Flight / التاريخ:</td>
-        <td style="padding: 6px 10px; border: 1px solid #cbd5e1;">${date}</td>
+        <td style="padding: 6px 10px; border: 1px solid #cbd5e1; font-family: monospace;">{{date}}</td>
         <td style="padding: 6px 10px; border: 1px solid #cbd5e1; background: #f8fafc; font-weight: bold;">Route / المسار:</td>
-        <td style="padding: 6px 10px; border: 1px solid #cbd5e1; font-family: monospace;">${dep} → ${arr}</td>
+        <td style="padding: 6px 10px; border: 1px solid #cbd5e1; font-family: monospace;">{{route}}</td>
       </tr>
       <tr>
         <td style="padding: 6px 10px; border: 1px solid #cbd5e1; background: #f8fafc; font-weight: bold;">Captain (PIC) / قائد الطائرة:</td>
-        <td style="padding: 6px 10px; border: 1px solid #cbd5e1;">${pic}</td>
+        <td style="padding: 6px 10px; border: 1px solid #cbd5e1;">{{picName}}</td>
         <td style="padding: 6px 10px; border: 1px solid #cbd5e1; background: #f8fafc; font-weight: bold;">First Officer / المساعد:</td>
-        <td style="padding: 6px 10px; border: 1px solid #cbd5e1;">${fo}</td>
+        <td style="padding: 6px 10px; border: 1px solid #cbd5e1;">{{foName}}</td>
       </tr>
       <tr>
         <td style="padding: 6px 10px; border: 1px solid #cbd5e1; background: #f8fafc; font-weight: bold;">PAX & Cargo / الركاب والشحن:</td>
-        <td colspan="3" style="padding: 6px 10px; border: 1px solid #cbd5e1;">PAX: <b>${pax}</b> | Cargo: <b>${cargo} KG</b></td>
+        <td colspan="3" style="padding: 6px 10px; border: 1px solid #cbd5e1;">PAX: <b>{{pax}}</b> | Cargo: <b>{{cargo}} KG</b></td>
       </tr>
     </tbody>
   </table>
-  <div style="font-size: 11px; color: #64748b; text-align: end; margin-top: 20px;">Generated via AeroOps Smart Aviation Document System • Ref: ${date}-${flightNo}</div>
+  <div style="margin-bottom: 12px;">{{sectorsTableHtml}}</div>
+  <div>{{crewTableHtml}}</div>
 </div>`;
 
       res.json({
         ok: true,
         source: 'heuristic-engine',
-        title: 'Flight Clearance & Permit Application Form',
-        documentType: 'PERMIT',
+        title: 'Operational & Flight Clearance Form',
+        documentType: 'OPERATIONAL_FORM',
+        category: 'Dispatch',
         country: 'International Aviation Authority',
         authority: 'Civil Aviation Authority',
         detectedFields,
@@ -852,6 +1381,221 @@ Return STRICT JSON ONLY, adhering to this structure:
       res.status(500).json({
         ok: false,
         error: err?.message || 'فشل معالجة المستند',
+      });
+    }
+  });
+
+  // AI Interactive Chat Command Engine for Smart Form Scanner
+  app.post('/api/ai/form-chat', async (req, res) => {
+    try {
+      const {
+        message = '',
+        history = [],
+        formState = {},
+        flightData = {},
+        fileBase64 = '',
+        mimeType = '',
+      } = req.body || {};
+
+      const cleanMsg = String(message || '').trim();
+      if (!cleanMsg) {
+        res.status(400).json({ ok: false, error: 'يرجى كتابة الأمر أو الطلب' });
+        return;
+      }
+
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (apiKey) {
+        try {
+          const ai = new GoogleGenAI({
+            apiKey,
+            httpOptions: {
+              headers: {
+                'User-Agent': 'aistudio-build',
+              },
+            },
+          });
+
+          const compactFields = Array.isArray(formState.detectedFields)
+            ? formState.detectedFields.map((f: any, idx: number) => ({
+                index: idx,
+                key: f.key,
+                systemKey: f.systemKey || '',
+                label: f.label,
+                value: f.value,
+                box: f.box,
+                fontSize: f.fontSize,
+                align: f.align,
+              }))
+            : [];
+
+          const recentHistory = Array.isArray(history)
+            ? history
+                .slice(-6)
+                .map((h: any) => `${h.role === 'user' ? 'User' : 'AI'}: ${h.text}`)
+                .join('\n')
+            : '';
+
+          const prompt = `
+You are an intelligent Flight Operations Form Editor Copilot for AeroOps.
+The user wants to modify, add, delete, position, or link fields in the currently scanned form, or update its metadata/HTML layout.
+
+Current Form State:
+- title: ${formState.title || ''}
+- category: ${formState.category || 'Dispatch'}
+- authority: ${formState.authority || ''}
+- country: ${formState.country || ''}
+- outputFormat: ${formState.saveOutputFormat || 'original'}
+- detectedFields: ${JSON.stringify(compactFields)}
+- missingFields: ${JSON.stringify(formState.missingFields || [])}
+
+Available AeroOps System Keys (for automatic live binding):
+flightNo, date, departure, departureFull, arrival, arrivalFull, route, std, sta, altn, flightType, flightNature, purpose, pax, cargo, aircraft, aircraftType, seatCapacity, mtow, picName, picLicense, picPassport, picNationality, foName, foLicense, foPassport, crewCount, crew, actualStd, takeoff, landing, actualSta, blockTime, blockFuel, fuelUsed, fuelRemaining, delayCode, operatorName, operatorNameAr, operatorCode, operatorCountry, address, phone, fax, email, sita, contactPerson, preparedBy, handlingAgent, entryPoint, exitPoint, atsRoute, permitNo, permitsNotes, sectorsTableHtml, crewTableHtml.
+
+Current Target Flight Data:
+${JSON.stringify({
+  flightNo: flightData.flightNo || '',
+  date: flightData.date || flightData.stdDate || '',
+  departure: flightData.dep || flightData.departure || '',
+  arrival: flightData.arr || flightData.arrival || '',
+  std: flightData.stdTime || flightData.std || '',
+  sta: flightData.staTime || flightData.sta || '',
+  aircraft: flightData.acft || flightData.aircraft || '',
+  picName: flightData.picName || '',
+  foName: flightData.foName || '',
+  pax: flightData.pax ?? '',
+  operatorName: flightData.operatorName || '',
+})}
+
+Recent Chat History:
+${recentHistory || 'None'}
+
+User Command:
+"${cleanMsg}"
+
+Return STRICT JSON ONLY with this schema:
+{
+  "assistantMessage": "Concise Arabic confirmation explaining exactly what commands were applied to the form",
+  "commands": [
+    // Supported command objects (omit unneeded properties):
+    // 1) { "type": "update_meta", "title": "...", "category": "...", "authority": "...", "country": "...", "outputFormat": "original" | "html" }
+    // 2) { "type": "add_field", "label": "...", "key": "...", "systemKey": "...", "value": "...", "align": "center", "fontSize": 10, "box": { "x": 160, "y": 500, "width": 140, "height": 20, "page": 0 } }
+    // 3) { "type": "update_field", "target": "existing key or label or index", "label": "...", "systemKey": "...", "value": "...", "align": "center", "fontSize": 10, "box": { "x": 160, "y": 500, "width": 140, "height": 20, "page": 0 } }
+    // 4) { "type": "remove_field", "target": "existing key or label or index" }
+    // 5) { "type": "update_missing_field", "target": "key or label", "value": "..." }
+    // 6) { "type": "set_html_template", "formattedHtml": "clean A4 HTML with {{systemKey}} placeholders" }
+  ]
+}
+`;
+
+          const contents: any[] = [];
+          if (fileBase64 && (cleanMsg.includes('صورة') || cleanMsg.includes('نموذج') || cleanMsg.includes('مكان') || cleanMsg.includes('حقل') || compactFields.length < 4)) {
+            const cleanBase64 = String(fileBase64).replace(/^data:[^;]+;base64,/, '');
+            if (cleanBase64.length > 20) {
+              contents.push({
+                inlineData: {
+                  mimeType: mimeType || 'image/png',
+                  data: cleanBase64,
+                },
+              });
+            }
+          }
+          contents.push({ text: prompt });
+
+          const response = await ai.models.generateContent({
+            model: 'gemini-4-hydrogen',
+            contents,
+            config: {
+              responseMimeType: 'application/json',
+            },
+          });
+
+          const rawText = (response.text || '').trim();
+          let parsedJson: any = null;
+          try {
+            parsedJson = JSON.parse(rawText);
+          } catch {
+            const m = rawText.match(/\{[\s\S]*\}/);
+            if (m) parsedJson = JSON.parse(m[0]);
+          }
+
+          if (parsedJson && Array.isArray(parsedJson.commands)) {
+            res.json({
+              ok: true,
+              source: 'gemini-ai',
+              assistantMessage: parsedJson.assistantMessage || 'تم تطبيق الأمر على النموذج.',
+              commands: parsedJson.commands,
+            });
+            return;
+          }
+        } catch (aiErr: any) {
+          console.warn('Gemini form-chat fallback:', aiErr?.message);
+        }
+      }
+
+      // Smart Heuristic Fallback Command Parser
+      const commands: any[] = [];
+      let assistantMessage = '';
+      const lower = cleanMsg.toLowerCase();
+
+      if (/عنوان|سمّي|غير اسم|اسم النموذج|title/i.test(cleanMsg)) {
+        const quoted = cleanMsg.match(/["«']([^"»']+)["»']/);
+        const afterColon = cleanMsg.split(/[:=]|إلى|الى/).pop()?.trim();
+        const nextTitle = (quoted?.[1] || afterColon || '').trim();
+        if (nextTitle && nextTitle.length >= 2 && nextTitle.length <= 120) {
+          commands.push({ type: 'update_meta', title: nextTitle });
+          assistantMessage = `تم تغيير عنوان النموذج إلى "${nextTitle}".`;
+        }
+      }
+
+      if (/أضف|اضف|add/i.test(cleanMsg)) {
+        const label = cleanMsg.replace(/^(أضف|اضف|add)\s*(حقل|field)?\s*/i, '').trim() || 'حقل جديد';
+        const sysMatch =
+          /رحلة|flight/i.test(label) ? 'flightNo'
+          : /طائرة|تسجيل|aircraft/i.test(label) ? 'aircraft'
+          : /كابتن|قائد|pic/i.test(label) ? 'picName'
+          : /تاريخ|date/i.test(label) ? 'date'
+          : /ركاب|pax/i.test(label) ? 'pax'
+          : /وكيل|handling/i.test(label) ? 'handlingAgent'
+          : '';
+        commands.push({
+          type: 'add_field',
+          label,
+          key: sysMatch || `field_${Date.now().toString(36)}`,
+          systemKey: sysMatch,
+          value: sysMatch ? String((flightData as any)[sysMatch] || '') : '',
+          box: { x: 160, y: 420, width: 150, height: 20, page: 0 },
+          fontSize: 10,
+          align: 'center',
+        });
+        assistantMessage = `تمت إضافة الحقل "${label}"${sysMatch ? ` وربطه ببيانات النظام (${sysMatch})` : ''}.`;
+      } else if (/احذف|امسح|delete|remove/i.test(cleanMsg)) {
+        const target = cleanMsg.replace(/^(احذف|امسح|delete|remove)\s*(حقل|field)?\s*/i, '').trim();
+        if (target) {
+          commands.push({ type: 'remove_field', target });
+          assistantMessage = `تم إرسال أمر حذف الحقل "${target}".`;
+        }
+      } else if (/html/i.test(lower)) {
+        commands.push({ type: 'update_meta', outputFormat: 'html' });
+        assistantMessage = 'تم تحويل صيغة الحفظ والمعاينة إلى نموذج HTML المنسق.';
+      } else if (/pdf|أصلي|اصلي/i.test(cleanMsg)) {
+        commands.push({ type: 'update_meta', outputFormat: 'original' });
+        assistantMessage = 'تم تفعيل وضع التعبئة المباشرة فوق المستند الأصلي (PDF).';
+      }
+
+      if (commands.length === 0) {
+        assistantMessage = 'لم أتمكن من تنفيذ هذا التعديل تلقائياً. جرب كتابة: "أضف حقل رقم التصريح"، أو "غير اسم النموذج إلى تصريح عبور"، أو "احذف حقل الشحن".';
+      }
+
+      res.json({
+        ok: true,
+        source: 'heuristic-engine',
+        assistantMessage,
+        commands,
+      });
+    } catch (err: any) {
+      res.status(500).json({
+        ok: false,
+        error: err?.message || 'تعذر تنفيذ أمر المحادثة',
       });
     }
   });
@@ -975,6 +1719,22 @@ Return STRICT JSON ONLY, adhering to this structure:
       res.sendFile(path.join(__dirname, 'public/manifest.json'));
     }
   });
+
+  // Serve pdfjs-dist worker, cmaps & standard_fonts cleanly without Vite ?import rewriting
+  const pdfjsDistDir = path.join(__dirname, 'node_modules/pdfjs-dist');
+  app.get('/api/pdfjs/pdf.worker.min.mjs', (_req, res) => {
+    res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.sendFile(path.join(pdfjsDistDir, 'legacy/build/pdf.worker.min.mjs'));
+  });
+  app.use(
+    '/api/pdfjs/cmaps',
+    express.static(path.join(pdfjsDistDir, 'cmaps'), { maxAge: '1d' })
+  );
+  app.use(
+    '/api/pdfjs/standard_fonts',
+    express.static(path.join(pdfjsDistDir, 'standard_fonts'), { maxAge: '1d' })
+  );
 
   const distPath = path.join(__dirname, 'dist');
   const isProd =

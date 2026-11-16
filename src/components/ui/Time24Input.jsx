@@ -50,7 +50,9 @@ export function Time24Input({
   onChange,
   placeholder = "00:00",
   disabled = false,
-  showNowButton = true,
+  showNowButton = false,
+  showPicker = true,
+  compact = false,
   className = "",
 }) {
   const [text, setText] = useState(value || "");
@@ -74,9 +76,10 @@ export function Time24Input({
 
   const handleRawChange = (e) => {
     const raw = e.target.value.replace(/[^0-9:]/g, "").slice(0, 5);
-    // Auto-insert colon when typing 4 digits smoothly
-    if (/^\d{4}$/.test(raw)) {
-      const formatted = normalizeTime24(raw);
+    // Instant 4 digits input handling ("1200" -> "12:00")
+    const digitsOnly = raw.replace(/[^0-9]/g, "");
+    if (digitsOnly.length === 4) {
+      const formatted = normalizeTime24(digitsOnly);
       setText(formatted);
       onChange?.(formatted);
       return;
@@ -147,12 +150,14 @@ export function Time24Input({
     setOpenPicker(false);
   };
 
+  const isCompact = compact || !showPicker;
+
   return (
     <div ref={wrapRef} className={`relative ${className}`} dir="ltr">
       <div
-        className={`flex items-center rounded-lg border px-2.5 py-2 transition focus-within:ring-2 focus-within:ring-sky-500 ${
-          disabled ? "opacity-60 cursor-not-allowed" : ""
-        }`}
+        className={`flex items-center rounded-md border transition focus-within:ring-1 focus-within:ring-sky-500 ${
+          isCompact ? "px-2 py-1 h-8" : "px-2.5 py-1.5 h-9"
+        } ${disabled ? "opacity-60 cursor-not-allowed" : ""}`}
         style={{
           backgroundColor: "var(--bg-card)",
           borderColor: "var(--border-default)",
@@ -166,37 +171,40 @@ export function Time24Input({
           disabled={disabled}
           value={text}
           onChange={handleRawChange}
+          onFocus={(e) => e.target.select()}
           onBlur={handleBlur}
           onKeyDown={handleKeyDown}
-          placeholder={placeholder}
+          placeholder={placeholder || (isCompact ? "1200" : "00:00")}
           maxLength={5}
-          className="w-full bg-transparent outline-none font-mono font-bold text-sm tracking-wider tabular-nums"
+          className="w-full bg-transparent outline-none font-mono font-bold text-xs tracking-wider tabular-nums"
           style={{ color: "var(--text-primary)" }}
         />
 
-        <span className="text-[10px] font-mono font-semibold text-slate-400 px-1 select-none">
-          24H
-        </span>
+        {!isCompact && (
+          <span className="text-[9px] font-mono font-semibold text-slate-400 px-1 select-none">
+            24H
+          </span>
+        )}
 
         {showNowButton && !disabled && (
           <button
             type="button"
             onClick={setNowUtc}
-            className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-sky-500/15 text-sky-600 dark:text-sky-400 hover:bg-sky-500/25 me-1 whitespace-nowrap"
+            className="px-1 py-0.5 rounded text-[9px] font-bold bg-sky-500/15 text-sky-600 dark:text-sky-400 hover:bg-sky-500/25 me-1 whitespace-nowrap"
             title="إدراج الوقت الحالي UTC"
           >
             UTC
           </button>
         )}
 
-        {!disabled && (
+        {!disabled && showPicker && !compact && (
           <button
             type="button"
             onClick={() => setOpenPicker((v) => !v)}
             className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500"
             title="اختيار الوقت بنظام 24 ساعة"
           >
-            <Clock className="w-4 h-4" />
+            <Clock className="w-3.5 h-3.5" />
           </button>
         )}
       </div>

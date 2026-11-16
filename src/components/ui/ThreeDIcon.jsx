@@ -1298,6 +1298,193 @@ export function ThreeDIcon({
         );
 
       /* ═══════════════════════════════════════════════════════
+       * 12. OPERATIONS (3D Flight Dispatch Radar & Takeoff Runway)
+       * ═══════════════════════════════════════════════════════ */
+      case "operations":
+        return (
+          <g>
+            <ellipse
+              cx="50"
+              cy="86"
+              rx="36"
+              ry="6"
+              fill={`url(#${uid}_floorShadow)`}
+            />
+            {/* 3D Dispatch Board Base */}
+            <rect
+              x="16"
+              y="26"
+              width="68"
+              height="52"
+              rx="10"
+              fill={rgbStr(deepShadow)}
+              transform="translate(0, 3)"
+            />
+            <rect
+              x="16"
+              y="26"
+              width="68"
+              height="52"
+              rx="10"
+              fill={`url(#${uid}_themePrimary)`}
+            />
+            <rect
+              x="20"
+              y="30"
+              width="60"
+              height="44"
+              rx="7"
+              fill={darkMode ? "#0f172a" : "#ffffff"}
+              opacity="0.95"
+            />
+            {/* Multi-Sector Flight Route Arc */}
+            <circle cx="32" cy="60" r="4" fill={`url(#${uid}_emerald)`} />
+            <circle cx="50" cy="48" r="3.5" fill={`url(#${uid}_gold)`} />
+            <circle cx="68" cy="40" r="4" fill={`url(#${uid}_themePrimary)`} />
+            <path
+              d="M 32 60 Q 41 46 50 48 Q 59 50 68 40"
+              stroke={`url(#${uid}_themePrimary)`}
+              strokeWidth="2.5"
+              strokeDasharray="3 2"
+              fill="none"
+            />
+            {/* Glossy Airplane Taking Off */}
+            <g transform="translate(54, 24) rotate(-25)">
+              <polygon
+                points="14,0 18,14 26,18 26,21 18,19 16,27 20,30 20,32 14,30 8,32 8,30 12,27 10,19 2,21 2,18 10,14"
+                fill={`url(#${uid}_gold)`}
+              />
+            </g>
+            {/* Bottom Timeline Bars */}
+            <rect x="26" y="66" width="18" height="3.5" rx="1.7" fill={`url(#${uid}_themePrimary)`} opacity="0.7" />
+            <rect x="48" y="66" width="24" height="3.5" rx="1.7" fill={`url(#${uid}_emerald)`} opacity="0.8" />
+          </g>
+        );
+
+      /* ═══════════════════════════════════════════════════════
+       * 13. FLIGHT FORMS & GENDEC (3D Stamped Flight Document Stack)
+       * ═══════════════════════════════════════════════════════ */
+      case "flight-forms":
+        return (
+          <g>
+            <ellipse
+              cx="50"
+              cy="86"
+              rx="34"
+              ry="6"
+              fill={`url(#${uid}_floorShadow)`}
+            />
+            {/* Back Page Shadow Layer */}
+            <rect
+              x="26"
+              y="18"
+              width="50"
+              height="60"
+              rx="7"
+              fill={`url(#${uid}_chrome)`}
+              transform="rotate(5 50 50)"
+            />
+            {/* Main Document Sheet */}
+            <rect
+              x="22"
+              y="20"
+              width="50"
+              height="60"
+              rx="7"
+              fill={darkMode ? "#1e293b" : "#ffffff"}
+              stroke={rgbStr(midTone)}
+              strokeWidth="2"
+            />
+            {/* Top Document Header Ribbon */}
+            <rect
+              x="22"
+              y="20"
+              width="50"
+              height="13"
+              rx="6"
+              fill={`url(#${uid}_themePrimary)`}
+            />
+            <rect x="28" y="25" width="24" height="3.5" rx="1.7" fill="#ffffff" opacity="0.9" />
+            {/* Form Lines */}
+            <rect x="28" y="40" width="36" height="3.5" rx="1.7" fill={darkMode ? "#475569" : "#cbd5e1"} />
+            <rect x="28" y="48" width="28" height="3.5" rx="1.7" fill={darkMode ? "#475569" : "#cbd5e1"} />
+            <rect x="28" y="56" width="22" height="3.5" rx="1.7" fill={darkMode ? "#475569" : "#cbd5e1"} />
+            {/* Official Emerald / Gold Stamp Seal */}
+            <circle cx="64" cy="64" r="14" fill={rgbStr(deepShadow)} opacity="0.25" transform="translate(1,2)" />
+            <circle cx="64" cy="64" r="14" fill={`url(#${uid}_emerald)`} />
+            <circle cx="64" cy="64" r="10.5" fill="none" stroke="#ffffff" strokeWidth="1.4" strokeDasharray="2 1.5" />
+            <path
+              d="M 59 64.5 L 62.5 68 L 70 60"
+              stroke="#ffffff"
+              strokeWidth="2.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              fill="none"
+            />
+          </g>
+        );
+
+      /* ═══════════════════════════════════════════════════════
+       * 14. JOURNEY LOG (3D Logbook & 24H Flight Chronometer)
+       * ═══════════════════════════════════════════════════════ */
+      case "journey-log":
+        return (
+          <g>
+            <ellipse
+              cx="50"
+              cy="86"
+              rx="34"
+              ry="6"
+              fill={`url(#${uid}_floorShadow)`}
+            />
+            {/* Logbook Cover */}
+            <rect
+              x="20"
+              y="20"
+              width="52"
+              height="60"
+              rx="7"
+              fill={rgbStr(deepShadow)}
+              transform="translate(0, 3)"
+            />
+            <rect
+              x="20"
+              y="20"
+              width="52"
+              height="60"
+              rx="7"
+              fill={`url(#${uid}_themePrimary)`}
+            />
+            {/* Inner Page */}
+            <rect
+              x="26"
+              y="25"
+              width="42"
+              height="50"
+              rx="4"
+              fill={darkMode ? "#0f172a" : "#ffffff"}
+            />
+            {/* Log Rows */}
+            <rect x="31" y="33" width="26" height="3.5" rx="1.7" fill={`url(#${uid}_themePrimary)`} opacity="0.8" />
+            <rect x="31" y="42" width="32" height="3" rx="1.5" fill={darkMode ? "#475569" : "#cbd5e1"} />
+            <rect x="31" y="50" width="24" height="3" rx="1.5" fill={darkMode ? "#475569" : "#cbd5e1"} />
+            <rect x="31" y="58" width="20" height="3" rx="1.5" fill={darkMode ? "#475569" : "#cbd5e1"} />
+            {/* 24H UTC Chronometer Badge */}
+            <circle cx="67" cy="63" r="15" fill={`url(#${uid}_gold)`} />
+            <circle cx="67" cy="63" r="11.5" fill={darkMode ? "#0f172a" : "#ffffff"} />
+            <path
+              d="M 67 55.5 L 67 63 L 72 66"
+              stroke={`url(#${uid}_themePrimary)`}
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              fill="none"
+            />
+            <circle cx="67" cy="63" r="2" fill={`url(#${uid}_gold)`} />
+          </g>
+        );
+
+      /* ═══════════════════════════════════════════════════════
        * DEFAULT / HOME (3D Airport Terminal Radar Base)
        * ═══════════════════════════════════════════════════════ */
       default:

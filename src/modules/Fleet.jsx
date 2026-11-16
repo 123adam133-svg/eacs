@@ -22,6 +22,9 @@ import {
   RefreshCw,
   ShieldCheck,
   AlertTriangle,
+  LayoutGrid,
+  Table,
+  List,
 } from "lucide-react";
 import { useT, useAuth } from "../contexts";
 import { Field } from "../components/ui/Field";
@@ -130,10 +133,10 @@ export function Fleet({
         userName: user?.fullName || "",
       });
       setSyncStatus?.("synced");
-      showToast("✅ تمت مزامنة جميع الطائرات والمستندات بين الأسطول و CAMO", "success");
+      showToast("تمت مزامنة جميع الطائرات والمستندات بين الأسطول و CAMO بنجاح", "success");
     } catch (e) {
       setSyncStatus?.("error");
-      showToast("❌ فشلت المزامنة: " + e.message, "error");
+      showToast("فشلت المزامنة: " + e.message, "error");
     } finally {
       setSyncingBoth(false);
     }
@@ -160,7 +163,7 @@ export function Fleet({
 
   const openEdit = (a) => {
     if (!canEdit) {
-      showToast("⚠️ ليس لديك صلاحية تعديل", "warning");
+      showToast("ليس لديك صلاحية تعديل الطائرات", "warning");
       return;
     }
     setBeforeEditReg(a.reg || "");
@@ -181,15 +184,15 @@ export function Fleet({
 
   const save = async () => {
     if (editing === "new" && !canCreate) {
-      showToast("⚠️ ليس لديك صلاحية إضافة", "warning");
+      showToast("ليس لديك صلاحية إضافة طائرة جديدة", "warning");
       return;
     }
     if (editing !== "new" && !canEdit) {
-      showToast("⚠️ ليس لديك صلاحية تعديل", "warning");
+      showToast("ليس لديك صلاحية تعديل بيانات الطائرة", "warning");
       return;
     }
     if (!draft.reg) {
-      showToast("⚠️ يرجى إدخال تسجيل الطائرة (Registration)", "warning");
+      showToast("يرجى إدخال تسجيل الطائرة (Registration)", "warning");
       return;
     }
     setSavingAcft(true);
@@ -217,9 +220,9 @@ export function Fleet({
 
       setEditing(null);
       setSyncStatus?.("synced");
-      showToast("✅ تم الحفظ والمزامنة تلقائياً مع CAMO", "success");
+      showToast("تم الحفظ والمزامنة تلقائياً مع نظام CAMO بنجاح", "success");
     } catch (e) {
-      showToast("Save failed: " + e.message, "error");
+      showToast("فشل الحفظ: " + e.message, "error");
       setSyncStatus?.("error");
     } finally {
       setSavingAcft(false);
@@ -228,7 +231,7 @@ export function Fleet({
 
   const remove = async (acft) => {
     if (!canDelete) {
-      showToast("⚠️ ليس لديك صلاحية حذف", "warning");
+      showToast("ليس لديك صلاحية حذف الطائرات", "warning");
       return;
     }
     if (
@@ -248,16 +251,16 @@ export function Fleet({
       });
       logSafe(user, "DELETE", "Fleet+CAMO", acft.id, acft.reg || "", {});
       setSyncStatus?.("synced");
-      showToast("✅ تم حذف الطائرة من الأسطول و CAMO", "success");
+      showToast("تم حذف الطائرة من الأسطول و CAMO بنجاح", "success");
     } catch (e) {
       setSyncStatus?.("error");
-      showToast("Delete failed: " + e.message, "error");
+      showToast("فشل الحذف: " + e.message, "error");
     }
   };
 
   const openDocs = (a) => {
     if (!canDocsView) {
-      showToast("⚠️ ليس لديك صلاحية عرض المستندات", "warning");
+      showToast("ليس لديك صلاحية عرض المستندات", "warning");
       return;
     }
     setDocsAcft(a);
@@ -327,84 +330,132 @@ export function Fleet({
     return "#10b981";
   };
 
+  const statusCounts = {
+    all: fleet.length,
+    AIRWORTHY: fleet.filter((a) => String(a.status || "").toUpperCase() === "AIRWORTHY").length,
+    MAINTENANCE: fleet.filter((a) => String(a.status || "").toUpperCase() === "MAINTENANCE").length,
+    AOG: fleet.filter((a) => String(a.status || "").toUpperCase() === "AOG").length,
+  };
+
   return (
-    <div className="space-y-4 fade-in">
-      {/* ═══ Toolbar ═══ */}
-      <div className="rounded-xl p-3 space-y-3" style={cardStyle}>
+    <div className="space-y-2 fade-in">
+      {/* ═══ Compact Header & Filter Strip ═══ */}
+      <div className="rounded-lg p-2 space-y-1.5" style={cardStyle}>
         <div className="flex flex-wrap gap-2 items-center justify-between">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 flex-wrap">
             <div
-              className="w-10 h-10 rounded-lg flex items-center justify-center shadow-md"
+              className="w-7 h-7 rounded-md flex items-center justify-center shrink-0"
               style={{ background: "var(--brand-gradient)" }}
             >
-              <Plane className="w-6 h-6 text-white" />
+              <Plane className="w-3.5 h-3.5 text-white" />
             </div>
-            <div>
-              <h2
-                className="text-lg font-bold flex items-center gap-2"
-                style={{ color: "var(--text-primary)" }}
-              >
-                <span>{t.fleet}</span>
-                <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-500">
-                  ⇄ CAMO Linked
-                </span>
-              </h2>
-              <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-                {fleet.length} {t.aircraft || "aircraft"} · مرتبط ثنائياً مع إدارة الصلاحية (CAMO)
-              </p>
+            <h2 className="text-xs font-bold tracking-tight" style={{ color: "var(--text-primary)" }}>
+              {t.fleet}
+            </h2>
+            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-emerald-500/12 text-emerald-500 border border-emerald-500/25">
+              ⇄ CAMO
+            </span>
+
+            {/* Quick Status Filter Pills */}
+            <div className="hidden sm:flex items-center gap-1 flex-wrap">
+              {[
+                { key: "", label: lang === "ar" ? "الكل" : "All", count: statusCounts.all, color: "var(--brand-primary)" },
+                ...AIRCRAFT_STATUSES.map((s) => ({
+                  key: s.key,
+                  label: lang === "ar" ? s.ar : s.en,
+                  count: fleet.filter((a) => a.status === s.key).length,
+                  color:
+                    s.key === "AOG"
+                      ? "#ef4444"
+                      : s.key === "MAINTENANCE"
+                      ? "#f59e0b"
+                      : "#10b981",
+                })),
+              ].map((st) => {
+                const isSel = statusFilter === st.key;
+                return (
+                  <button
+                    key={st.key || "all"}
+                    type="button"
+                    onClick={() => setStatusFilter(st.key)}
+                    className="h-6 px-2 rounded-md text-[10.5px] font-semibold transition inline-flex items-center gap-1 cursor-pointer"
+                    style={
+                      isSel
+                        ? {
+                            backgroundColor: "var(--bg-app)",
+                            border: "1.5px solid var(--brand-primary)",
+                            color: "var(--text-primary)",
+                          }
+                        : {
+                            backgroundColor: "transparent",
+                            border: "1px solid var(--border-default)",
+                            color: "var(--text-muted)",
+                          }
+                    }
+                  >
+                    <span>{st.label}</span>
+                    <span className="font-mono tabular-nums font-bold" style={{ color: st.color }}>
+                      {st.count}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-1.5">
             {(canEdit || canDocsEdit) && (
               <button
+                type="button"
                 onClick={handleManualSync}
                 disabled={syncingBoth}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold border transition hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-50"
+                className="h-7 flex items-center gap-1 px-2 rounded-md text-[11px] font-semibold border transition hover:opacity-90 disabled:opacity-50 cursor-pointer"
                 style={{
                   borderColor: "var(--border-default)",
                   color: "var(--text-primary)",
+                  backgroundColor: "var(--bg-app)",
                 }}
                 title="مزامنة شاملة لجميع سجلات ومستندات الطائرات بين Fleet و CAMO"
               >
-                <RefreshCw
-                  className={`w-3.5 h-3.5 ${syncingBoth ? "animate-spin" : ""}`}
-                />
-                {lang === "ar" ? "مزامنة Fleet ↔ CAMO" : "Sync Fleet ↔ CAMO"}
+                <RefreshCw className={`w-3 h-3 ${syncingBoth ? "animate-spin" : ""}`} />
+                <span className="hidden sm:inline">{lang === "ar" ? "مزامنة CAMO" : "Sync"}</span>
               </button>
             )}
             {canCreate && (
               <button
+                type="button"
                 onClick={openNew}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold text-white transition hover:-translate-y-0.5"
-                style={{
-                  background: "var(--brand-gradient)",
-                  boxShadow: "var(--shadow-md)",
-                }}
+                className="h-7 flex items-center gap-1 px-2.5 rounded-md text-[11px] font-semibold text-white transition hover:opacity-95 cursor-pointer"
+                style={{ background: "var(--brand-gradient)" }}
               >
-                <Plus className="w-4 h-4" /> {t.addAircraft}
+                <Plus className="w-3.5 h-3.5" />
+                <span>{t.addAircraft}</span>
               </button>
             )}
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-2 items-center">
-          <div className="relative flex-1 min-w-[200px]">
+        {/* Single Compact Search + Filter + View Mode Bar */}
+        <div
+          className="flex flex-wrap gap-1.5 items-center pt-1.5 border-t"
+          style={{ borderColor: "var(--border-default)" }}
+        >
+          <div className="relative flex-1 min-w-[160px] max-w-xs">
             <Search
-              className="w-4 h-4 absolute top-1/2 -translate-y-1/2 start-3"
+              className="w-3 h-3 absolute top-1/2 -translate-y-1/2 start-2"
               style={{ color: "var(--text-muted)" }}
             />
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={t.search}
-              className="ps-9"
+              className="ps-7 h-7 text-[11px]"
             />
           </div>
           <Select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="w-auto"
+            className="w-auto h-7 text-[11px] py-0"
           >
             <option value="">{t.allStatuses}</option>
             {AIRCRAFT_STATUSES.map((s) => (
@@ -413,47 +464,60 @@ export function Fleet({
               </option>
             ))}
           </Select>
+
+          {(search || statusFilter) && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearch("");
+                setStatusFilter("");
+              }}
+              className="h-7 px-2 rounded text-[10px] font-bold bg-rose-500/10 text-rose-500 hover:bg-rose-500/20 border border-rose-500/25 cursor-pointer"
+            >
+              {lang === "ar" ? "مسح" : "Clear"}
+            </button>
+          )}
+
           <div
-            className="flex rounded-lg overflow-hidden"
+            className="ms-auto flex rounded-md overflow-hidden"
             style={{ border: "1px solid var(--border-default)" }}
           >
             {[
-              { id: "cards", l: "⊞" },
-              { id: "table", l: "☰" },
-              { id: "list", l: "≡" },
-            ].map((v) => (
-              <button
-                key={v.id}
-                onClick={() => setViewMode(v.id)}
-                className="px-3 py-1.5 text-sm font-bold transition"
-                style={
-                  viewMode === v.id
-                    ? {
-                        background: "var(--brand-gradient)",
-                        color: "white",
-                      }
-                    : {
-                        backgroundColor: "var(--bg-card)",
-                        color: "var(--text-muted)",
-                      }
-                }
-              >
-                {v.l}
-              </button>
-            ))}
+              { id: "cards", Icon: LayoutGrid, title: "Cards" },
+              { id: "table", Icon: Table, title: "Table" },
+              { id: "list", Icon: List, title: "List" },
+            ].map((v) => {
+              const VIcon = v.Icon;
+              return (
+                <button
+                  key={v.id}
+                  type="button"
+                  onClick={() => setViewMode(v.id)}
+                  title={v.title}
+                  className="transition flex items-center justify-center h-7 w-7 cursor-pointer"
+                  style={
+                    viewMode === v.id
+                      ? { background: "var(--brand-gradient)", color: "white" }
+                      : { backgroundColor: "var(--bg-card)", color: "var(--text-muted)" }
+                  }
+                >
+                  <VIcon className="w-3.5 h-3.5" />
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>
 
       {!hasAnyAction && (
-        <div className="p-3 rounded-lg text-xs flex items-center gap-2 bg-amber-500/15 border border-amber-500/40 text-amber-500">
-          <Eye className="w-4 h-4" /> لديك صلاحية العرض فقط — لا يمكنك تعديل أو إضافة أو حذف
+        <div className="p-2 rounded-lg text-[11px] flex items-center gap-2 bg-amber-500/15 border border-amber-500/40 text-amber-500">
+          <Eye className="w-3.5 h-3.5" /> لديك صلاحية العرض فقط — لا يمكنك تعديل أو إضافة أو حذف
         </div>
       )}
 
-      {/* ═══ CARDS VIEW ═══ */}
+      {/* ═══ COMPACT CARDS VIEW ═══ */}
       {viewMode === "cards" && (
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-2">
           {filteredFleet.map((a) => {
             const docs = parseDocsList(a.attachments);
             const openMelCount = (melList || []).filter(
@@ -465,135 +529,128 @@ export function Fleet({
             return (
               <div
                 key={a.id}
-                className="rounded-xl p-4 space-y-3 transition theme-transition"
+                className="rounded-lg p-2.5 space-y-1.5 transition theme-transition flex flex-col justify-between hover:border-sky-500/40"
                 style={cardStyle}
               >
-                <div className="flex justify-between items-start gap-2">
-                  <div>
-                    <div
-                      className="font-bold text-lg font-mono"
-                      style={{ color: "var(--text-primary)" }}
-                    >
-                      {a.reg}
-                    </div>
-                    <div
-                      className="text-sm flex items-center gap-1.5"
-                      style={{ color: "var(--text-muted)" }}
-                    >
-                      <span>{a.type || "—"}</span>
-                      <span>·</span>
-                      <span className="inline-flex items-center gap-1 text-[11px] text-emerald-500 font-semibold">
-                        <ShieldCheck className="w-3.5 h-3.5" /> CAMO
-                      </span>
-                    </div>
-                  </div>
-                  <AircraftStatusBadge status={a.status} lang={lang} />
-                </div>
-
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                  {[
-                    { l: t.tah || "TAH", v: a.tah?.toLocaleString() },
-                    { l: t.tac || "TAC", v: a.tac?.toLocaleString() },
-                    { l: t.lastCheck || "Last Check", v: fmtDate(a.lastCheck) },
-                    { l: t.nextCheck || "Next Check", v: fmtDate(a.nextCheck) },
-                  ].map((it, idx) => (
-                    <div
-                      key={idx}
-                      className="p-2 rounded"
-                      style={innerBoxStyle}
-                    >
+                <div className="space-y-1.5">
+                  <div className="flex justify-between items-start gap-1">
+                    <div className="min-w-0">
                       <div
-                        className="text-xs"
-                        style={{ color: "var(--text-muted)" }}
-                      >
-                        {it.l}
-                      </div>
-                      <div
-                        className="font-semibold font-mono"
+                        className="font-bold text-sm font-mono truncate"
                         style={{ color: "var(--text-primary)" }}
                       >
-                        {it.v || "—"}
+                        {a.reg}
+                      </div>
+                      <div
+                        className="text-[10.5px] flex items-center gap-1 truncate"
+                        style={{ color: "var(--text-muted)" }}
+                      >
+                        <span className="truncate">{a.type || "—"}</span>
+                        <span>·</span>
+                        <span className="inline-flex items-center gap-0.5 text-[9.5px] text-emerald-500 font-semibold shrink-0">
+                          <ShieldCheck className="w-2.5 h-2.5" /> CAMO
+                        </span>
                       </div>
                     </div>
-                  ))}
-                </div>
+                    <AircraftStatusBadge status={a.status} lang={lang} />
+                  </div>
 
-                {/* CAMO Certificates Quick Summary */}
-                {(a.coaExpiry || a.insuranceExpiry || a.noiseCertExpiry) && (
+                  {/* Dense 2x2 Metrics */}
                   <div
-                    className="p-2 rounded text-[11px] flex flex-wrap items-center justify-between gap-2"
-                    style={innerBoxStyle}
+                    className="grid grid-cols-2 rounded border overflow-hidden divide-x divide-y text-[10.5px]"
+                    style={{
+                      backgroundColor: "var(--bg-app)",
+                      borderColor: "var(--border-default)",
+                    }}
                   >
-                    <span>
-                      COA:{" "}
-                      <b
-                        className="font-mono"
-                        style={{ color: certBadgeColor(a.coaExpiry) }}
+                    {[
+                      { l: t.tah || "TAH", v: a.tah?.toLocaleString() },
+                      { l: t.tac || "TAC", v: a.tac?.toLocaleString() },
+                      { l: t.lastCheck || "Last", v: a.lastCheck ? fmtDate(a.lastCheck).slice(2) : "—" },
+                      { l: t.nextCheck || "Next", v: a.nextCheck ? fmtDate(a.nextCheck).slice(2) : "—" },
+                    ].map((it, idx) => (
+                      <div
+                        key={idx}
+                        className="px-1.5 py-1 flex items-center justify-between gap-1"
+                        style={{ borderColor: "var(--border-default)" }}
                       >
-                        {fmtDate(a.coaExpiry) || "—"}
-                      </b>
-                    </span>
-                    <span>
-                      Ins:{" "}
-                      <b
-                        className="font-mono"
-                        style={{ color: certBadgeColor(a.insuranceExpiry) }}
-                      >
-                        {fmtDate(a.insuranceExpiry) || "—"}
-                      </b>
-                    </span>
-                    <span>
-                      Noise:{" "}
-                      <b
-                        className="font-mono"
-                        style={{ color: certBadgeColor(a.noiseCertExpiry) }}
-                      >
-                        {fmtDate(a.noiseCertExpiry) || "—"}
-                      </b>
-                    </span>
+                        <span className="text-[9px] uppercase truncate" style={{ color: "var(--text-muted)" }}>
+                          {it.l}
+                        </span>
+                        <span className="font-bold font-mono tabular-nums text-[10px] truncate" style={{ color: "var(--text-primary)" }}>
+                          {it.v || "—"}
+                        </span>
+                      </div>
+                    ))}
                   </div>
-                )}
 
-                {openMelCount > 0 && (
-                  <div className="p-2 rounded text-xs bg-amber-500/15 text-amber-500 border border-amber-500/30 flex items-center gap-1.5">
-                    <AlertTriangle className="w-3.5 h-3.5" />
-                    <span>{openMelCount} MEL مفتوح في CAMO</span>
-                  </div>
-                )}
+                  {/* Certificates Quick Strip */}
+                  {(a.coaExpiry || a.insuranceExpiry || a.noiseCertExpiry) && (
+                    <div
+                      className="px-1.5 py-1 rounded text-[9.5px] flex items-center justify-between gap-1"
+                      style={innerBoxStyle}
+                    >
+                      <span>
+                        COA:{" "}
+                        <b className="font-mono tabular-nums" style={{ color: certBadgeColor(a.coaExpiry) }}>
+                          {a.coaExpiry ? fmtDate(a.coaExpiry).slice(5) : "—"}
+                        </b>
+                      </span>
+                      <span>
+                        Ins:{" "}
+                        <b className="font-mono tabular-nums" style={{ color: certBadgeColor(a.insuranceExpiry) }}>
+                          {a.insuranceExpiry ? fmtDate(a.insuranceExpiry).slice(5) : "—"}
+                        </b>
+                      </span>
+                      <span>
+                        N:{" "}
+                        <b className="font-mono tabular-nums" style={{ color: certBadgeColor(a.noiseCertExpiry) }}>
+                          {a.noiseCertExpiry ? fmtDate(a.noiseCertExpiry).slice(5) : "—"}
+                        </b>
+                      </span>
+                    </div>
+                  )}
+
+                  {openMelCount > 0 && (
+                    <div className="px-1.5 py-0.5 rounded text-[10px] bg-amber-500/12 text-amber-500 border border-amber-500/25 flex items-center gap-1">
+                      <AlertTriangle className="w-3 h-3 shrink-0" />
+                      <span>{openMelCount} MEL مفتوح</span>
+                    </div>
+                  )}
+                </div>
 
                 {hasAnyAction && (
                   <div
-                    className="flex gap-2 pt-2"
+                    className="flex gap-1 pt-1.5"
                     style={{ borderTop: "1px solid var(--border-default)" }}
                   >
                     {canEdit && (
                       <button
+                        type="button"
                         onClick={() => openEdit(a)}
-                        className="flex-1 py-2 rounded-lg bg-amber-500/15 text-amber-500 hover:bg-amber-500/25 text-xs flex items-center justify-center gap-1 font-bold transition"
+                        className="flex-1 h-6 rounded bg-amber-500/12 text-amber-500 hover:bg-amber-500/20 text-[10.5px] flex items-center justify-center gap-1 font-bold transition cursor-pointer"
                       >
-                        <Edit className="w-3.5 h-3.5" /> {t.edit || "تعديل"}
+                        <Edit className="w-3 h-3" /> {t.edit || "تعديل"}
                       </button>
                     )}
                     {canDocsView && (
                       <button
+                        type="button"
                         onClick={() => openDocs(a)}
-                        className="relative flex-1 py-2 rounded-lg bg-purple-500/15 text-purple-500 hover:bg-purple-500/25 text-xs flex items-center justify-center gap-1 font-bold transition"
+                        className="relative flex-1 h-6 rounded bg-purple-500/12 text-purple-500 hover:bg-purple-500/20 text-[10.5px] flex items-center justify-center gap-1 font-bold transition cursor-pointer"
                       >
-                        <Paperclip className="w-3.5 h-3.5" />
-                        {t.attachments || "مستندات"}
-                        {docs.length > 0 && (
-                          <span className="ms-1 bg-purple-600 text-white text-[10px] font-bold rounded-full px-1.5 py-0.2">
-                            {docs.length}
-                          </span>
-                        )}
+                        <Paperclip className="w-3 h-3" />
+                        <span>{docs.length}</span>
                       </button>
                     )}
                     {canDelete && (
                       <button
+                        type="button"
                         onClick={() => remove(a)}
-                        className="py-2 px-3 rounded-lg bg-rose-500/15 text-rose-500 hover:bg-rose-500/25 text-xs transition"
+                        className="h-6 px-2 rounded bg-rose-500/12 text-rose-500 hover:bg-rose-500/20 text-[10px] transition cursor-pointer"
+                        title="حذف"
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
+                        <Trash2 className="w-3 h-3" />
                       </button>
                     )}
                   </div>
@@ -758,13 +815,13 @@ export function Fleet({
             return (
               <div
                 key={a.id}
-                className="p-4 flex flex-wrap items-center gap-4 transition"
+                className="p-3 flex flex-wrap items-center gap-3 transition"
               >
                 <div
-                  className="w-12 h-12 rounded-lg flex items-center justify-center"
+                  className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
                   style={{ background: "var(--brand-gradient)" }}
                 >
-                  <Plane className="w-6 h-6 text-white" />
+                  <Plane className="w-4 h-4 text-white" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <div
@@ -1051,10 +1108,10 @@ export function Fleet({
               }}
             >
               <div
-                className="w-11 h-11 rounded-lg flex items-center justify-center"
+                className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
                 style={{ background: "var(--brand-gradient)" }}
               >
-                <Plane className="w-6 h-6 text-white" />
+                <Plane className="w-4 h-4 text-white" />
               </div>
               <div className="flex-1 min-w-0">
                 <div
@@ -1202,10 +1259,10 @@ export function ReadOnlyDocsList({ docs = [], canDownload = false }) {
             style={{ backgroundColor: cardBg, borderColor: cardBorder }}
           >
             <div
-              className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
+              className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
               style={{ backgroundColor: "rgba(168, 85, 247, 0.15)" }}
             >
-              <Paperclip className="w-5 h-5 text-purple-500" />
+              <Paperclip className="w-4 h-4 text-purple-500" />
             </div>
             <div className="flex-1 min-w-0">
               <div

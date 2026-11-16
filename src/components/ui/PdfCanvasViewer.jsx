@@ -7,8 +7,7 @@
  * Safe against ArrayBuffer detachment & render cancellations.
  * ═══════════════════════════════════════════════════════════ */
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import * as pdfjsLib from "pdfjs-dist";
-import pdfjsWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
 import {
   ZoomIn,
   ZoomOut,
@@ -23,7 +22,7 @@ import {
 } from "lucide-react";
 
 if (typeof window !== "undefined") {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
+  pdfjsLib.GlobalWorkerOptions.workerSrc = "/api/pdfjs/pdf.worker.min.mjs";
 }
 
 /**
@@ -45,8 +44,9 @@ async function loadPdfDocument(source) {
 
     return pdfjsLib.getDocument({
       data: clonedData,
-      cMapUrl: "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/cmaps/",
+      cMapUrl: "/api/pdfjs/cmaps/",
       cMapPacked: true,
+      standardFontDataUrl: "/api/pdfjs/standard_fonts/",
     }).promise;
   }
 
@@ -55,8 +55,9 @@ async function loadPdfDocument(source) {
     const buffer = await source.arrayBuffer();
     return pdfjsLib.getDocument({
       data: new Uint8Array(buffer),
-      cMapUrl: "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/cmaps/",
+      cMapUrl: "/api/pdfjs/cmaps/",
       cMapPacked: true,
+      standardFontDataUrl: "/api/pdfjs/standard_fonts/",
     }).promise;
   }
 
@@ -75,8 +76,9 @@ async function loadPdfDocument(source) {
       }
       return pdfjsLib.getDocument({
         data: bytes,
-        cMapUrl: "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/cmaps/",
+        cMapUrl: "/api/pdfjs/cmaps/",
         cMapPacked: true,
+        standardFontDataUrl: "/api/pdfjs/standard_fonts/",
       }).promise;
     }
 
@@ -87,8 +89,9 @@ async function loadPdfDocument(source) {
       const buffer = await res.arrayBuffer();
       return pdfjsLib.getDocument({
         data: new Uint8Array(buffer),
-        cMapUrl: "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/cmaps/",
+        cMapUrl: "/api/pdfjs/cmaps/",
         cMapPacked: true,
+        standardFontDataUrl: "/api/pdfjs/standard_fonts/",
       }).promise;
     }
   }

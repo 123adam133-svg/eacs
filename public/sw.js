@@ -86,13 +86,17 @@ self.addEventListener("message", (event) => {
       body: body || "تحديث جديد من بوابتك التشغيلية",
       icon: "/pwa-192x192.png",
       badge: "/pwa-192x192.png",
-      vibrate: [200, 100, 200, 100, 200],
+      vibrate: [300, 150, 300, 150, 450],
       requireInteraction: true,
       renotify: true,
       tag: tag || `aeroops-${category || "alert"}-${Date.now()}`,
       data: {
         url: url || "/?view=schedule",
       },
+      actions: [
+        { action: "open", title: "📋 عرض الرحلة" },
+        { action: "dismiss", title: "✕ إغلاق" },
+      ],
     };
     event.waitUntil(
       self.registration.showNotification(
@@ -106,6 +110,8 @@ self.addEventListener("message", (event) => {
 // 5. Notification Click Event Handler (Focus app or open window)
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
+  if (event.action === "dismiss") return;
+
   const targetUrl = event.notification.data?.url || "/";
 
   event.waitUntil(

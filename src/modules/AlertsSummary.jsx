@@ -12,9 +12,17 @@ import {
   Eye,
   EyeOff,
   RotateCcw,
+  Trash2,
 } from "lucide-react";
 import { useT, useAuth } from "../contexts";
-import { computeAlerts } from "../utils/alerts";
+import {
+  computeAlerts,
+  readLocallyDismissedAlerts,
+  writeLocallyDismissedAlerts,
+  dismissAlertsLocally,
+  undismissAlertLocally,
+  ALERTS_DISMISSED_EVENT,
+} from "../utils/alerts";
 import { fmtDate } from "../utils/helpers";
 import { can as checkPerm } from "../config/permissions";
 import { alertsAPI } from "../api";
@@ -22,7 +30,7 @@ import { alertsAPI } from "../api";
 export function AlertsSummary({ crew, users, fleet }) {
   const t = useT();
   const { user } = useAuth();
-  const [dismissedKeys, setDismissedKeys] = useState([]);
+  const [dismissedKeys, setDismissedKeys] = useState(() => readLocallyDismissedAlerts());
   const [showDismissed, setShowDismissed] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -33,12 +41,25 @@ export function AlertsSummary({ crew, users, fleet }) {
     checkPerm(user, "alerts.view") || canSeeCrewDocs || canSeeFleetDocs;
   const canDismiss = checkPerm(user, "alerts.dismiss");
 
-  /* ⭐ تحميل المتجاهَل */
+  useEffect(() => {
+    const syncDismissed = () => {
+      setDismissedKeys(readLocallyDismissedAlerts());
+    };
+    window.addEventListener(ALERTS_DISMISSED_EVENT, syncDismissed);
+    return () => window.removeEventListener(ALERTS_DISMISSED_EVENT, syncDismissed);
+  }, []);
+
+  /* ⭐ تحميل المتجاهَل مع دمج التخزين المحلي */
   useEffect(() => {
     async function load() {
       try {
-        const list = await alertsAPI.listDismissed();
-        setDismissedKeys(list.map((d) => d.alertKey));
+        const list = await alertsAPI.listDismissed().catch(() => []);
+        const serverKeys = (list || []).map((d) => d?.alertKey).filter(Boolean).map(String);
+        const merged = writeLocallyDismissedAlerts([
+          ...readLocallyDismissedAlerts(),
+          ...serverKeys,
+        ]);
+        setDismissedKeys(merged);
       } catch (e) {
         console.warn("Failed to load dismissed alerts:", e.message);
       } finally {
@@ -72,37 +93,39 @@ export function AlertsSummary({ crew, users, fleet }) {
     dismissedKeys.includes(a.key)
   );
 
-  /* ⭐ تجاهل / إعادة — ⚠️ window.alert لتفادي تعارض المعامل */
   const handleDismiss = async (alertItem) => {
-    if (!canDismiss) {
-      showToast("⚠️ ليس لديك صلاحية تجاهل التنبيهات");
-      return;
-    }
-    if (!alertItem.key) {
+    if (!alertItem?.key) {
       showToast("⚠️ لا يمكن تجاهل هذا التنبيه (مفتاح مفقود)");
       return;
     }
-    if (
-      !(await confirmAction(
-        `تجاهل التنبيه: ${alertItem.subject} — ${alertItem.label}؟`
-      ))
-    )
+    const next = dismissAlertsLocally(alertItem.key);
+    setDismissedKeys(next);
+    if (canDismiss) {
+      alertsAPI.dismiss(alertItem.key, user?.id, user?.fullName, "").catch(() => {});
+    }
+  };
+
+  const handleClearAllAlerts = async () => {
+    const keys = activeAlerts.map((a) => a.key).filter(Boolean);
+    if (keys.length === 0) return;
+    if (!(await confirmAction(`مسح وتجاهل جميع تنبيهات الوثائق (${keys.length})؟`))) {
       return;
-    try {
-      await alertsAPI.dismiss(alertItem.key, user?.id, user?.fullName, "");
-      setDismissedKeys((prev) => [...prev, alertItem.key]);
-    } catch (e) {
-      showToast("❌ فشل تجاهل التنبيه: " + e.message);
+    }
+    const next = dismissAlertsLocally(keys);
+    setDismissedKeys(next);
+    if (canDismiss) {
+      keys.forEach((k) => {
+        alertsAPI.dismiss(k, user?.id, user?.fullName, "").catch(() => {});
+      });
     }
   };
 
   const handleUndismiss = async (alertItem) => {
-    if (!canDismiss) return;
-    try {
-      await alertsAPI.undismiss(alertItem.key);
-      setDismissedKeys((prev) => prev.filter((k) => k !== alertItem.key));
-    } catch (e) {
-      showToast("❌ فشل إعادة التنبيه: " + e.message);
+    if (!alertItem?.key) return;
+    const next = undismissAlertLocally(alertItem.key);
+    setDismissedKeys(next);
+    if (canDismiss) {
+      alertsAPI.undismiss(alertItem.key).catch(() => {});
     }
   };
 
@@ -169,22 +192,34 @@ export function AlertsSummary({ crew, users, fleet }) {
           )}
         </h3>
 
-        {dismissedAlerts.length > 0 && (
-          <button
-            onClick={() => setShowDismissed((v) => !v)}
-            className="text-xs font-bold text-slate-500 hover:text-slate-700 flex items-center gap-1"
-          >
-            {showDismissed ? (
-              <>
-                <Eye className="w-3.5 h-3.5" /> إخفاء المتجاهَل
-              </>
-            ) : (
-              <>
-                <Eye className="w-3.5 h-3.5" /> إظهار المتجاهَل
-              </>
-            )}
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {activeAlerts.length > 0 && (
+            <button
+              type="button"
+              onClick={handleClearAllAlerts}
+              className="text-xs font-bold text-rose-600 dark:text-rose-400 hover:underline flex items-center gap-1 cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5" /> مسح الكل
+            </button>
+          )}
+          {dismissedAlerts.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowDismissed((v) => !v)}
+              className="text-xs font-bold text-slate-500 hover:text-slate-700 flex items-center gap-1 cursor-pointer"
+            >
+              {showDismissed ? (
+                <>
+                  <Eye className="w-3.5 h-3.5" /> إخفاء المتجاهَل
+                </>
+              ) : (
+                <>
+                  <Eye className="w-3.5 h-3.5" /> إظهار المتجاهَل
+                </>
+              )}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Content */}
@@ -202,10 +237,11 @@ export function AlertsSummary({ crew, users, fleet }) {
                 </div>
               </div>
               <div className="flex gap-1 flex-shrink-0">
-                {canDismiss && a.key && (
+                {a.key && (
                   <button
+                    type="button"
                     onClick={() => handleDismiss(a)}
-                    className="p-1 rounded hover:bg-white/50 transition"
+                    className="p-1 rounded hover:bg-white/50 transition cursor-pointer"
                     title="تجاهل"
                   >
                     <X className="w-3.5 h-3.5" />
@@ -239,15 +275,14 @@ export function AlertsSummary({ crew, users, fleet }) {
                   </div>
                 </div>
                 <div className="flex gap-1 flex-shrink-0">
-                  {canDismiss && (
-                    <button
-                      onClick={() => handleUndismiss(a)}
-                      className="p-1 rounded hover:bg-white/50 transition"
-                      title="إعادة"
-                    >
-                      <RotateCcw className="w-3.5 h-3.5" />
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => handleUndismiss(a)}
+                    className="p-1 rounded hover:bg-white/50 transition cursor-pointer"
+                    title="إعادة"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               </div>
               <div className="mt-1 font-mono text-[10px]">

@@ -120,12 +120,14 @@ function extractSectors(flight) {
   const sectors = [
     {
       index: 1,
+      flightNo: flight.flightNo || "",
       dep: flight.dep || "",
       arr: flight.arr || "",
       std: flight.std || "",
       sta: flight.sta || "",
       date: flight.std ? String(flight.std).slice(0, 10) : "",
       acft: flight.acft || "",
+      crewSlots: Array.isArray(flight.crewSlots) ? flight.crewSlots : [],
     },
   ];
 
@@ -135,12 +137,14 @@ function extractSectors(flight) {
     if (!date && leg.std) date = String(leg.std).slice(0, 10);
     sectors.push({
       index: idx + 2,
+      flightNo: leg.flightNo || flight.flightNo || "",
       dep: leg.dep || "",
       arr: leg.arr || "",
       std: leg.std || "",
       sta: leg.sta || "",
       date: date || (flight.std ? String(flight.std).slice(0, 10) : ""),
       acft: leg.acft || flight.acft || "",
+      crewSlots: Array.isArray(leg.crewSlots) ? leg.crewSlots : flight.crewSlots || [],
     });
   });
 
@@ -159,8 +163,9 @@ function fillTemplateDoc(doc, flight, crew, settings = {}, options = {}) {
     ? String(flight.std).slice(0, 10)
     : "";
   const sectorAcft = sector ? sector.acft || flight.acft : flight.acft;
+  const sectorSlots = sector && Array.isArray(sector.crewSlots) ? sector.crewSlots : flight.crewSlots || [];
 
-  const roster = (flight.crewSlots || [])
+  const roster = sectorSlots
     .map((s) => ({ slot: s, member: crew.find((c) => c.id === s.crewId) }))
     .filter((x) => x.member);
 
@@ -174,7 +179,7 @@ function fillTemplateDoc(doc, flight, crew, settings = {}, options = {}) {
 
   const logoUrl = settings.logo ? logoToDisplayUrl(settings.logo) : "";
   const stampUrl = settings.stamp ? logoToDisplayUrl(settings.stamp) : "";
-  const flightNo = flight.flightNo || "";
+  const flightNo = (sector && sector.flightNo) || flight.flightNo || "";
   const dateParts = fmtDateParts(sectorDate);
 
   const depInfo = getAirportInfo(sectorDep);

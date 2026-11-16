@@ -24,6 +24,7 @@ import {
   Plus,
   ChevronDown,
   Check,
+  Download,
 } from "lucide-react";
 import { Field } from "./ui/Field";
 import { Input } from "./ui/Input";
@@ -38,6 +39,7 @@ import {
 } from "../utils/htmlTemplateEngine";
 import {
   fillPermitPDF,
+  downloadPDF,
   openPDF,
   extractPDFFormFields,
 } from "../utils/pdfFiller";
@@ -561,6 +563,79 @@ export function OperationalFormFillModal({
     }
   };
 
+  const [downloading, setDownloading] = useState(false);
+
+  const handleDownload = async () => {
+    const safeName = `${String(form?.name || "Form").replace(/[^\w\u0600-\u06FF-]+/g, "_")}_${
+      formData.flightNo || "Flight"
+    }`;
+    setDownloading(true);
+    try {
+      if (isPdfForm && pdfAttachment?.url) {
+        const bytes =
+          filledPdfBytes ||
+          (await fillPermitPDF(
+            pdfAttachment.url,
+            coordinatePdfFields,
+            formData,
+            effectiveAcroMappings,
+            { stampUrl: "" }
+          ));
+        downloadPDF(bytes, `${safeName}.pdf`);
+        showToast("✅ تم تحميل ملف PDF بنجاح", "success");
+        return;
+      }
+
+      const cleanDoc = getCleanHtmlDoc();
+      if (!cleanDoc) return;
+
+      const jspdfModule = await import("jspdf");
+      const html2canvasModule = await import("html2canvas");
+      const jsPDF = jspdfModule.jsPDF || jspdfModule.default;
+      const html2canvas = html2canvasModule.default || html2canvasModule;
+
+      const iframe = document.createElement("iframe");
+      iframe.style.cssText =
+        "position:fixed;left:-9999px;top:0;width:210mm;min-height:297mm;border:0;visibility:hidden;background:#fff;";
+      document.body.appendChild(iframe);
+      iframe.contentDocument.open();
+      iframe.contentDocument.write(cleanDoc);
+      iframe.contentDocument.close();
+      await new Promise((r) => setTimeout(r, 700));
+
+      const targetEl = iframe.contentDocument.body;
+      const canvas = await html2canvas(targetEl, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: "#ffffff",
+        logging: false,
+      });
+      document.body.removeChild(iframe);
+
+      const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait", compress: true });
+      const pdfW = pdf.internal.pageSize.getWidth();
+      const pdfH = pdf.internal.pageSize.getHeight();
+      const imgH = (canvas.height * pdfW) / canvas.width;
+      let yOffset = 0;
+      const imgData = canvas.toDataURL("image/jpeg", 0.96);
+      pdf.addImage(imgData, "JPEG", 0, 0, pdfW, imgH);
+      let remaining = imgH - pdfH;
+      while (remaining > 5) {
+        yOffset -= pdfH;
+        pdf.addPage();
+        pdf.addImage(imgData, "JPEG", 0, yOffset, pdfW, imgH);
+        remaining -= pdfH;
+      }
+      pdf.save(`${safeName}.pdf`);
+      showToast("✅ تم تحميل النموذج بصيغة PDF", "success");
+    } catch (err) {
+      showToast("❌ تعذر تحميل النموذج: " + (err?.message || err), "error");
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   const filledEmptyCount = useMemo(
     () =>
       emptyFieldsToFill.filter((f) =>
@@ -638,6 +713,16 @@ export function OperationalFormFillModal({
             >
               <Eye className="w-4 h-4 text-sky-500" />
               المعاينة
+            </button>
+
+            <button
+              type="button"
+              onClick={handleDownload}
+              disabled={downloading || (isPdfForm && generatingPdf && !filledPdfBytes)}
+              className="px-3.5 py-2 rounded-xl text-xs font-bold bg-sky-600 hover:bg-sky-700 text-white flex items-center gap-1.5 whitespace-nowrap shrink-0 shadow-sm transition disabled:opacity-50"
+            >
+              {downloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+              تحميل PDF
             </button>
 
             <button

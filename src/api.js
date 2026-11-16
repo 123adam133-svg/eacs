@@ -783,16 +783,30 @@ function formatFlightSummaryForNotif(f) {
   return { fn, dep, arr, datePart, stdTime, staTime, summary: `${fn} (${dep} → ${arr})${datePart ? ` [${datePart}]` : ""}${timePart}${acftPart}` };
 }
 
+function collectAllFlightCrewSlots(flight) {
+  if (!flight) return [];
+  const merged = [];
+  const seen = new Set();
+  const pushSlot = (slot) => {
+    if (!slot || !safeString(slot.crewId).trim()) return;
+    const cid = String(slot.crewId).trim();
+    if (seen.has(cid)) return;
+    seen.add(cid);
+    merged.push(slot);
+  };
+  safeArray(flight.crewSlots).forEach(pushSlot);
+  safeArray(flight.legs).forEach((leg) => {
+    safeArray(leg?.crewSlots).forEach(pushSlot);
+  });
+  return merged;
+}
+
 function dispatchFlightNotificationsAsync(mode, flight, prevFlight = null) {
   if (flight?.skipNotifications) return;
 
   Promise.resolve().then(async () => {
-    const nextSlots = safeArray(flight?.crewSlots).filter(
-      (s) => s && safeString(s.crewId).trim()
-    );
-    const prevSlots = safeArray(prevFlight?.crewSlots).filter(
-      (s) => s && safeString(s.crewId).trim()
-    );
+    const nextSlots = collectAllFlightCrewSlots(flight);
+    const prevSlots = collectAllFlightCrewSlots(prevFlight);
     const prevMap = new Map(
       prevSlots.map((s) => [String(s.crewId).trim(), safeString(s.position)])
     );
@@ -901,12 +915,20 @@ function normalizeFlightRecord(f) {
     actual: actual || {},
     pax: safeNumber(f.pax, 0),
     cargo: safeNumber(f.cargo, 0),
+    baggage: safeNumber(f.baggage, 0),
+    paxManifest: safeString(f.paxManifest),
+    tripNo: safeString(f.tripNo),
+    client: safeString(f.client),
+    assignee: safeString(f.assignee),
     status: safeString(f.status, "SCHEDULED") || "SCHEDULED",
     flightType: safeString(f.flightType, "SCHEDULED") || "SCHEDULED",
+    flightNature: safeString(f.flightNature, Number(f.pax) > 0 ? "PAX" : "FERRY"),
     notes: safeString(f.notes),
     permits: safeString(f.permits),
     services: safeString(f.services),
     route: safeString(f.route, `${dep}/${arr}`),
+    fuel: safeObject(f.fuel),
+    wb: safeObject(f.wb),
   };
 }
 
@@ -937,11 +959,19 @@ export const flightsAPI = {
       acft: safeString(f.acft).trim(),
       status: safeString(f.status, "SCHEDULED") || "SCHEDULED",
       flightType: safeString(f.flightType, "SCHEDULED") || "SCHEDULED",
+      flightNature: safeString(f.flightNature, "PAX"),
       notes: safeString(f.notes),
       permits: safeString(f.permits),
       services: safeString(f.services),
       pax: safeNumber(f.pax, 0),
       cargo: safeNumber(f.cargo, 0),
+      baggage: safeNumber(f.baggage, 0),
+      paxManifest: safeString(f.paxManifest),
+      tripNo: safeString(f.tripNo),
+      client: safeString(f.client),
+      assignee: safeString(f.assignee),
+      fuel: f.fuel ? (typeof f.fuel === "object" ? JSON.stringify(f.fuel) : safeString(f.fuel)) : "",
+      wb: f.wb ? (typeof f.wb === "object" ? JSON.stringify(f.wb) : safeString(f.wb)) : "",
       crewSlots: JSON.stringify(cleanSlots),
       actual:
         f.actual && Object.keys(f.actual).length > 0
@@ -998,11 +1028,19 @@ export const flightsAPI = {
       acft: safeString(f.acft).trim(),
       status: safeString(f.status, "SCHEDULED") || "SCHEDULED",
       flightType: safeString(f.flightType, "SCHEDULED") || "SCHEDULED",
+      flightNature: safeString(f.flightNature, "PAX"),
       notes: safeString(f.notes),
       permits: safeString(f.permits),
       services: safeString(f.services),
       pax: safeNumber(f.pax, 0),
       cargo: safeNumber(f.cargo, 0),
+      baggage: safeNumber(f.baggage, 0),
+      paxManifest: safeString(f.paxManifest),
+      tripNo: safeString(f.tripNo),
+      client: safeString(f.client),
+      assignee: safeString(f.assignee),
+      fuel: f.fuel ? (typeof f.fuel === "object" ? JSON.stringify(f.fuel) : safeString(f.fuel)) : "",
+      wb: f.wb ? (typeof f.wb === "object" ? JSON.stringify(f.wb) : safeString(f.wb)) : "",
       crewSlots: JSON.stringify(cleanSlots),
       actual:
         f.actual && Object.keys(f.actual).length > 0
@@ -1199,6 +1237,45 @@ export const settingsAPI = {
       country: safeString(s.country, ""),
       navLayout: safeString(s.navLayout, "top"),
       tabPreferences: safeObject(s.tabPreferences) || null,
+      tabOrder: (() => {
+        if (Array.isArray(s.tabOrder)) return s.tabOrder;
+        const tp = safeObject(s.tabPreferences);
+        return Array.isArray(tp?.__tabOrder) ? tp.__tabOrder : null;
+      })(),
+      moreMenuConfig: (() => {
+        const direct = safeObject(s.moreMenuConfig);
+        if (direct) return direct;
+        const tp = safeObject(s.tabPreferences);
+        return safeObject(tp?.__moreMenuConfig) || null;
+      })(),
+      navItemsOrder: (() => {
+        if (Array.isArray(s.navItemsOrder)) return s.navItemsOrder;
+        const tp = safeObject(s.tabPreferences);
+        return Array.isArray(tp?.__navItemsOrder) ? tp.__navItemsOrder : null;
+      })(),
+      headerToolsList: (() => {
+        if (Array.isArray(s.headerToolsList)) return s.headerToolsList;
+        const tp = safeObject(s.tabPreferences);
+        return Array.isArray(tp?.__headerToolsList) ? tp.__headerToolsList : null;
+      })(),
+      headerToolsLayout: (() => {
+        const direct = safeString(s.headerToolsLayout, "");
+        if (direct) return direct;
+        const tp = safeObject(s.tabPreferences);
+        return safeString(tp?.__headerToolsLayout, "") || undefined;
+      })(),
+      crewContactCard: (() => {
+        const direct = safeObject(s.crewContactCard);
+        if (direct) return direct;
+        const tp = safeObject(s.tabPreferences);
+        return safeObject(tp?.__crewContactCard) || null;
+      })(),
+      airportCard: (() => {
+        const direct = safeObject(s.airportCard);
+        if (direct) return direct;
+        const tp = safeObject(s.tabPreferences);
+        return safeObject(tp?.__airportCard) || null;
+      })(),
       customMenus: (() => {
         if (Array.isArray(s.customMenus)) return s.customMenus;
         const tp = safeObject(s.tabPreferences);
@@ -1222,6 +1299,10 @@ export const settingsAPI = {
       positions: normalizePositions(s.positions),
       globalTheme: safeString(s.globalTheme || s.portalTheme, "modern"),
       portalTheme: safeString(s.globalTheme || s.portalTheme, "modern"),
+      portalIconStyle: safeString(s.portalIconStyle, "vector3d"),
+      portalCustomIcons: safeObject(s.portalCustomIcons) || {},
+      portalWatermarkLogo: cleanUrl(s.portalWatermarkLogo),
+      portalWatermarkOpacity: safeNumber(s.portalWatermarkOpacity, 0.18),
       aircraftType: safeString(s.aircraftType, "A319"),
       coaExpiry: safeString(s.coaExpiry, ""),
       address: safeString(s.address, ""),
@@ -1233,6 +1314,18 @@ export const settingsAPI = {
       seatCapacity: safeNumber(s.seatCapacity, 0),
       cargoCapacity: safeNumber(s.cargoCapacity, 0),
       noiseCertificate: safeString(s.noiseCertificate, ""),
+      scheduleDesign: (() => {
+        const direct = safeString(s.scheduleDesign, "");
+        if (direct) return direct;
+        const tp = safeObject(s.tabPreferences);
+        if (tp?.__scheduleDesign) return safeString(tp.__scheduleDesign, "dispatch_grid");
+        try {
+          if (typeof window !== "undefined") {
+            return window.localStorage.getItem("aeroops.scheduleDesign") || "dispatch_grid";
+          }
+        } catch {}
+        return "dispatch_grid";
+      })(),
     };
     writeSheetCache("Settings", resolvedSettings);
     return resolvedSettings;
@@ -1268,23 +1361,51 @@ export const settingsAPI = {
       navLayout: pick("navLayout", "top"),
       customMenus: pick("customMenus", existing?.customMenus || []),
       tabPreferences: (() => {
-        const incoming = pick("tabPreferences", null);
-        const prevLayouts = existing?.tabPreferences?.__dashboardLayouts;
-        const prevMenus =
-          existing?.tabPreferences?.__customMenus || existing?.customMenus;
-        if (!incoming && !prevLayouts && !prevMenus) return null;
+        const incoming = data.tabPreferences !== undefined ? data.tabPreferences : null;
+        const prevTp =
+          existing?.tabPreferences && typeof existing.tabPreferences === "object"
+            ? existing.tabPreferences
+            : {};
         const base =
-          incoming && typeof incoming === "object" ? { ...incoming } : {};
-        if (prevLayouts && !base.__dashboardLayouts) {
-          base.__dashboardLayouts = prevLayouts;
+          incoming && typeof incoming === "object"
+            ? { ...prevTp, ...incoming }
+            : { ...prevTp };
+
+        if (Array.isArray(data.customMenus)) {
+          base.__customMenus = data.customMenus;
+        } else if (!base.__customMenus && Array.isArray(existing?.customMenus)) {
+          base.__customMenus = existing.customMenus;
         }
-        if (!base.__customMenus) {
-          if (Array.isArray(data.customMenus)) {
-            base.__customMenus = data.customMenus;
-          } else if (Array.isArray(prevMenus)) {
-            base.__customMenus = prevMenus;
-          }
+
+        if (Array.isArray(data.tabOrder)) {
+          base.__tabOrder = data.tabOrder;
         }
+        if (data.moreMenuConfig && typeof data.moreMenuConfig === "object") {
+          base.__moreMenuConfig = data.moreMenuConfig;
+        }
+        if (Array.isArray(data.navItemsOrder)) {
+          base.__navItemsOrder = data.navItemsOrder;
+        }
+        if (Array.isArray(data.headerToolsList)) {
+          base.__headerToolsList = data.headerToolsList;
+        }
+        if (typeof data.headerToolsLayout === "string" && data.headerToolsLayout) {
+          base.__headerToolsLayout = data.headerToolsLayout;
+        }
+        if (data.crewContactCard && typeof data.crewContactCard === "object") {
+          base.__crewContactCard = data.crewContactCard;
+        }
+        if (data.airportCard && typeof data.airportCard === "object") {
+          base.__airportCard = data.airportCard;
+        }
+        const chosenDesign =
+          data.scheduleDesign !== undefined
+            ? data.scheduleDesign
+            : existing?.scheduleDesign || base.__scheduleDesign;
+        if (typeof chosenDesign === "string" && chosenDesign) {
+          base.__scheduleDesign = chosenDesign;
+        }
+
         return Object.keys(base).length > 0 ? base : null;
       })(),
       logo: pick("logo", ""),
@@ -1297,6 +1418,10 @@ export const settingsAPI = {
       positions: pick("positions", []),
       globalTheme: unifiedTheme,
       portalTheme: unifiedTheme,
+      portalIconStyle: pick("portalIconStyle", "vector3d"),
+      portalCustomIcons: pick("portalCustomIcons", existing?.portalCustomIcons || {}),
+      portalWatermarkLogo: pick("portalWatermarkLogo", existing?.portalWatermarkLogo || ""),
+      portalWatermarkOpacity: pick("portalWatermarkOpacity", existing?.portalWatermarkOpacity || 0.18),
       aircraftType: pick("aircraftType", ""),
       coaExpiry: pick("coaExpiry", ""),
       address: pick("address", ""),
@@ -1308,6 +1433,7 @@ export const settingsAPI = {
       seatCapacity: pick("seatCapacity", 0),
       cargoCapacity: pick("cargoCapacity", 0),
       noiseCertificate: pick("noiseCertificate", ""),
+      scheduleDesign: pick("scheduleDesign", existing?.scheduleDesign || "dispatch_grid"),
     };
 
     const payload = {
@@ -3941,6 +4067,414 @@ export const rosterGroupsAPI = {
 
     await persistRosterGroupsFallback(cleanList);
     return { ok: true, via: "Fallback", items: cleanList };
+  },
+};
+
+/* ═══════════════════════════════════════════════════════════
+ * COMMERCIAL & SALES API (Charter Flights, Quotes, Clients, CRM)
+ * ═══════════════════════════════════════════════════════════ */
+const SALES_CONFIG_KEY = "aeroops_sales_data_v1";
+
+const DEFAULT_SALES_DATA = {
+  trips: [
+    {
+      id: "TRIP-2026-001",
+      title: "VIP Executive Transport",
+      client: "Mediterranean Petroleum Corp",
+      clientContact: "+218 21 333 4455 · vip@medpetro.ly",
+      category: "VIP Charter",
+      dep: "HLLM",
+      arr: "HECA",
+      date: "2026-11-20",
+      std: "09:00",
+      sta: "11:30",
+      aircraft: "5A-GAB",
+      paxCount: 8,
+      paxNames: [
+        "Eng. Mustafa Al-Drissi (CEO)",
+        "Dr. Omar Mansour (CFO)",
+        "Tariq Belhaj (Director)",
+        "Fawzi Al-Werfali",
+        "Kareem Al-Naili",
+        "Salim Al-Warfalli",
+        "Adel Al-Fitouri",
+        "Mahmoud Al-Sharif",
+      ],
+      price: 28500,
+      currency: "USD",
+      status: "confirmed",
+      dispatched: false,
+      handlingNotes: "VIP Lounge Meet & Assist at Mitiga VIP Terminal and Cairo Presidential Lounge. Hot VIP Arabic Cuisine.",
+      createdAt: "2026-11-14T10:00:00Z",
+    },
+    {
+      id: "TRIP-2026-002",
+      title: "Emergency Air Ambulance (MEDEVAC)",
+      client: "SOS International / Tripoli Medical Center",
+      clientContact: "+216 71 888 999 · ops@sos-med.org",
+      category: "Medevac",
+      dep: "HLMS",
+      arr: "DTTA",
+      date: "2026-11-21",
+      std: "14:00",
+      sta: "15:15",
+      aircraft: "5A-ONE",
+      paxCount: 3,
+      paxNames: [
+        "Ahmed Al-Barasi (ICU Patient)",
+        "Dr. Sami Ben Ali (Flight Doctor)",
+        "Nurse Fatima Al-Gazzah",
+      ],
+      price: 16800,
+      currency: "USD",
+      status: "quoted",
+      dispatched: false,
+      handlingNotes: "Ramp ambulance access required at HLMS & DTTA. Oxygen bottle clearance approved.",
+      createdAt: "2026-11-15T08:30:00Z",
+    },
+    {
+      id: "TRIP-2026-003",
+      title: "Corporate Oil Field Crew Rotation",
+      client: "Waha Oil Company",
+      clientContact: "+218 21 444 8899 · logistics@wahaoil.ly",
+      category: "Corporate Shuttle",
+      dep: "HLLM",
+      arr: "HLDF",
+      date: "2026-11-22",
+      std: "06:30",
+      sta: "08:00",
+      aircraft: "5A-AAA",
+      paxCount: 120,
+      paxNames: ["Waha Field Technicians & Drilling Crew (Shift A)"],
+      price: 34000,
+      currency: "USD",
+      status: "contracted",
+      dispatched: false,
+      handlingNotes: "Field airstrip safety inspection completed. Standard cold meals & water crates.",
+      createdAt: "2026-11-15T12:00:00Z",
+    },
+    {
+      id: "TRIP-2026-004",
+      title: "AOG Aircraft Engine & Spare Parts Rush",
+      client: "Air France Cargo Logistics",
+      clientContact: "+33 1 48 64 22 11 · aog@airfrance.com",
+      category: "Cargo Charter",
+      dep: "LFPO",
+      arr: "HLLM",
+      date: "2026-11-23",
+      std: "22:00",
+      sta: "01:30",
+      aircraft: "5A-GAB",
+      paxCount: 0,
+      paxNames: ["Cargo Only — 3,200 kg CFM56 Turbine Spares"],
+      price: 31500,
+      currency: "USD",
+      status: "inquiry",
+      dispatched: false,
+      handlingNotes: "Direct ramp loading onto cargo high-loader. Customs expedited clearance pre-filed.",
+      createdAt: "2026-11-16T06:00:00Z",
+    },
+    {
+      id: "TRIP-2026-005",
+      title: "Diplomatic Delegation — Regional Summit",
+      client: "Ministry of Foreign Affairs",
+      clientContact: "+218 21 555 1122 · protocol@foreign.gov.ly",
+      category: "Government",
+      dep: "HLLM",
+      arr: "OEJN",
+      date: "2026-11-25",
+      std: "10:00",
+      sta: "13:30",
+      aircraft: "5A-GAB",
+      paxCount: 12,
+      paxNames: [
+        "H.E. Minister of State",
+        "Ambassador Al-Fitouri",
+        "Undersecretary Mansour",
+        "Diplomatic Security Team (6 officers)",
+        "Protocol Attaché (3 staff)",
+      ],
+      price: 42000,
+      currency: "USD",
+      status: "dispatched",
+      dispatched: true,
+      dispatchedFlightNo: "5S-CH05",
+      handlingNotes: "Royal / State Protocol reception at Jeddah International Royal Terminal.",
+      createdAt: "2026-11-13T09:00:00Z",
+    },
+  ],
+  quotes: [
+    {
+      id: "QT-2026-101",
+      client: "Mediterranean Petroleum Corp",
+      dep: "HLLM",
+      arr: "LTFM",
+      aircraft: "5A-GAB",
+      blockHours: 3.2,
+      hourlyRate: 3800,
+      baseCost: 12160,
+      landingFees: 1800,
+      handlingFees: 2100,
+      navFees: 1200,
+      crewHotel: 800,
+      vipCatering: 900,
+      subtotal: 18960,
+      marginPct: 15,
+      totalPrice: 21804,
+      currency: "USD",
+      expiryDate: "2026-11-28",
+      status: "Accepted",
+      notes: "Valid for 14 days. Aircraft subject to prior sale.",
+      createdAt: "2026-11-14T11:00:00Z",
+    },
+    {
+      id: "QT-2026-102",
+      client: "Air Partner UK / EMEA Broker",
+      dep: "HLMS",
+      arr: "LIRF",
+      aircraft: "5A-ONE",
+      blockHours: 2.5,
+      hourlyRate: 4200,
+      baseCost: 10500,
+      landingFees: 1500,
+      handlingFees: 1800,
+      navFees: 900,
+      crewHotel: 0,
+      vipCatering: 500,
+      subtotal: 15200,
+      marginPct: 12,
+      totalPrice: 17024,
+      currency: "USD",
+      expiryDate: "2026-11-26",
+      status: "Sent",
+      notes: "Net 15 payment terms for authorized broker.",
+      createdAt: "2026-11-15T09:30:00Z",
+    },
+    {
+      id: "QT-2026-103",
+      client: "Jetex Flight Support",
+      dep: "HLLB",
+      arr: "HBEH",
+      aircraft: "5A-GAB",
+      blockHours: 1.8,
+      hourlyRate: 3600,
+      baseCost: 6480,
+      landingFees: 1200,
+      handlingFees: 1400,
+      navFees: 600,
+      crewHotel: 0,
+      vipCatering: 400,
+      subtotal: 10080,
+      marginPct: 10,
+      totalPrice: 11088,
+      currency: "USD",
+      expiryDate: "2026-11-24",
+      status: "Draft",
+      notes: "Awaiting client confirmation of passenger count.",
+      createdAt: "2026-11-16T07:15:00Z",
+    },
+  ],
+  clients: [
+    {
+      id: "CLI-01",
+      name: "Mediterranean Petroleum Corp",
+      category: "Corporate",
+      contactPerson: "Eng. Mustafa Al-Drissi",
+      phone: "+218 21 333 4455",
+      whatsapp: "+218 91 234 5678",
+      email: "vip@medpetro.ly",
+      city: "Tripoli, Libya",
+      paymentTerms: "50% Deposit / Balance on Flight",
+      creditLimit: 150000,
+      totalSpend: 420000,
+      bookingsCount: 16,
+      rating: 5,
+      notes: "High priority VIP client. Always requires hot Arabic catering.",
+    },
+    {
+      id: "CLI-02",
+      name: "Air Partner UK / EMEA Broker",
+      category: "Aviation Broker",
+      contactPerson: "Edward Sterling",
+      phone: "+44 20 7946 0123",
+      whatsapp: "+44 77 0090 0456",
+      email: "charter@airpartner.com",
+      city: "London, UK",
+      paymentTerms: "Prepayment in Full",
+      creditLimit: 250000,
+      totalSpend: 680000,
+      bookingsCount: 24,
+      rating: 5,
+      notes: "Global charter broker. Prompt wire transfers.",
+    },
+    {
+      id: "CLI-03",
+      name: "Waha Oil Logistics",
+      category: "Oil & Gas Corporate",
+      contactPerson: "Adel Al-Fitouri",
+      phone: "+218 21 444 8899",
+      whatsapp: "+218 92 555 4321",
+      email: "logistics@wahaoil.ly",
+      city: "Tripoli / Waha Field",
+      paymentTerms: "Net 30 Days",
+      creditLimit: 500000,
+      totalSpend: 1250000,
+      bookingsCount: 48,
+      rating: 4,
+      notes: "Long-term corporate shuttles for engineering crew.",
+    },
+    {
+      id: "CLI-04",
+      name: "Jetex Flight Support FBO",
+      category: "Aviation Broker",
+      contactPerson: "Karim Haddad",
+      phone: "+971 4 212 4000",
+      whatsapp: "+971 50 123 4567",
+      email: "charter@jetex.com",
+      city: "Dubai, UAE",
+      paymentTerms: "Net 15 Days",
+      creditLimit: 200000,
+      totalSpend: 310000,
+      bookingsCount: 11,
+      rating: 5,
+      notes: "VIP FBO and luxury charter operator.",
+    },
+    {
+      id: "CLI-05",
+      name: "SOS International Medevac",
+      category: "Medical Evacuation",
+      contactPerson: "Dr. Marc Dubois",
+      phone: "+33 1 55 63 33 00",
+      whatsapp: "+33 6 12 34 56 78",
+      email: "ops@sos-med.org",
+      city: "Paris / Tunis",
+      paymentTerms: "Letter of Guarantee (LOG)",
+      creditLimit: 100000,
+      totalSpend: 240000,
+      bookingsCount: 14,
+      rating: 5,
+      notes: "Urgent medical evacuation flights. Requires immediate dispatch response.",
+    },
+  ],
+  contracts: [
+    {
+      id: "CNT-2026-001",
+      tripId: "TRIP-2026-001",
+      invoiceNo: "INV-2026-088",
+      client: "Mediterranean Petroleum Corp",
+      amount: 28500,
+      currency: "USD",
+      status: "Paid",
+      paymentDate: "2026-11-15",
+      dueDate: "2026-11-19",
+      terms: "100% Prepayment Received",
+    },
+    {
+      id: "CNT-2026-002",
+      tripId: "TRIP-2026-003",
+      invoiceNo: "INV-2026-089",
+      client: "Waha Oil Company",
+      amount: 34000,
+      currency: "USD",
+      status: "Partial",
+      depositAmount: 17000,
+      dueDate: "2026-12-15",
+      terms: "50% Advance Received, 50% Net 30",
+    },
+    {
+      id: "CNT-2026-003",
+      tripId: "TRIP-2026-005",
+      invoiceNo: "INV-2026-090",
+      client: "Ministry of Foreign Affairs",
+      amount: 42000,
+      currency: "USD",
+      status: "Unpaid",
+      dueDate: "2026-11-30",
+      terms: "Government PO Order — Net 15",
+    },
+  ],
+  emptyLegs: [
+    {
+      id: "EL-2026-01",
+      dep: "HECA",
+      arr: "HLLM",
+      date: "2026-11-21",
+      windowStart: "12:00",
+      windowEnd: "18:00",
+      aircraft: "5A-GAB",
+      seats: 12,
+      standardPrice: 28500,
+      emptyLegPrice: 13500,
+      currency: "USD",
+      discountPct: 53,
+      status: "Available",
+      originReason: "Return leg after VIP Cairo drop-off",
+    },
+    {
+      id: "EL-2026-02",
+      dep: "DTTA",
+      arr: "HLMS",
+      date: "2026-11-22",
+      windowStart: "09:00",
+      windowEnd: "15:00",
+      aircraft: "5A-ONE",
+      seats: 6,
+      standardPrice: 16800,
+      emptyLegPrice: 8200,
+      currency: "USD",
+      discountPct: 51,
+      status: "Available",
+      originReason: "Learjet repositioning after Tunis Medevac",
+    },
+    {
+      id: "EL-2026-03",
+      dep: "OEJN",
+      arr: "HLLM",
+      date: "2026-11-26",
+      windowStart: "14:00",
+      windowEnd: "20:00",
+      aircraft: "5A-GAB",
+      seats: 12,
+      standardPrice: 42000,
+      emptyLegPrice: 19500,
+      currency: "USD",
+      discountPct: 54,
+      status: "Available",
+      originReason: "Ferry return from Jeddah Summit",
+    },
+  ],
+};
+
+export const salesAPI = {
+  getSalesData: async () => {
+    try {
+      const cfg = await appConfigAPI.get(SALES_CONFIG_KEY);
+      if (cfg && typeof cfg === "object" && Array.isArray(cfg.trips)) {
+        writeSheetCache("SalesData", cfg);
+        return cfg;
+      }
+    } catch {}
+    const cached = readSheetCache("SalesData", null);
+    if (cached && typeof cached === "object" && Array.isArray(cached.trips)) {
+      return cached;
+    }
+    writeSheetCache("SalesData", DEFAULT_SALES_DATA);
+    appConfigAPI.set(SALES_CONFIG_KEY, DEFAULT_SALES_DATA).catch(() => {});
+    return DEFAULT_SALES_DATA;
+  },
+
+  saveSalesData: async (nextData) => {
+    if (!nextData || typeof nextData !== "object") return;
+    writeSheetCache("SalesData", nextData);
+    try {
+      await appConfigAPI.set(SALES_CONFIG_KEY, nextData);
+    } catch (e) {
+      console.warn("Failed to persist sales data to appConfig:", e);
+    }
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("aeroops:sales-data-updated", { detail: nextData }));
+    }
+    return nextData;
   },
 };
 

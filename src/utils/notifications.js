@@ -102,7 +102,11 @@ export async function triggerLockscreenNotification({
     return { success: false, reason: "unsupported" };
   }
   if (Notification.permission !== "granted") {
-    return { success: false, reason: "permission_not_granted", permission: Notification.permission };
+    return {
+      success: false,
+      reason: "permission_not_granted",
+      permission: Notification.permission,
+    };
   }
 
   const notifTitle = title || "AeroOps Crew Portal";
@@ -110,20 +114,63 @@ export async function triggerLockscreenNotification({
     body: body || "تحديث جديد من بوابتك التشغيلية",
     icon: "/pwa-192x192.png",
     badge: "/pwa-192x192.png",
-    vibrate: [200, 100, 200, 100, 200],
-    requireInteraction: true, // Keeps notification visible on lock screen
+    vibrate: [300, 150, 300, 150, 450],
+    requireInteraction: true, // Keeps notification visible on mobile lock screen until swiped/opened
     renotify: true,
     tag: `aeroops-${category}-${Date.now()}`,
+    timestamp: Date.now(),
     data: { url },
+    actions: [
+      { action: "open", title: "عرض التفاصيل / View" },
+      { action: "dismiss", title: "إغلاق / Close" },
+    ],
   };
 
-  // 1. Mobile OS & PWA Lock Screen path via active Service Worker
+  // 1. Mobile Physical Vibration (Haptic feedback)
+  if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+    try {
+      navigator.vibrate([300, 150, 300, 150, 450]);
+    } catch {}
+  }
+
+  // 2. Audio Chime Synthesis
+  try {
+    unlockAudio();
+    playNotification();
+  } catch {}
+
+  // 3. Mobile OS & PWA Lock Screen path via active Service Worker
   if ("serviceWorker" in navigator) {
     try {
-      let reg = await navigator.serviceWorker.getRegistration("/");
+      let reg = null;
+      try {
+        reg = await navigator.serviceWorker.ready;
+      } catch {}
       if (!reg) {
-        reg = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+        try {
+          reg = await navigator.serviceWorker.getRegistration();
+        } catch {}
       }
+      if (!reg) {
+        try {
+          reg = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+        } catch {}
+      }
+
+      // Send to service worker controller if available
+      try {
+        if (navigator.serviceWorker.controller) {
+          navigator.serviceWorker.controller.postMessage({
+            type: "SHOW_LOCKSCREEN_NOTIFICATION",
+            title: notifTitle,
+            body: notifOptions.body,
+            tag: notifOptions.tag,
+            url,
+            category,
+          });
+        }
+      } catch {}
+
       if (reg && typeof reg.showNotification === "function") {
         await reg.showNotification(notifTitle, notifOptions);
         return { success: true, method: "service_worker", regScope: reg.scope };
@@ -133,7 +180,7 @@ export async function triggerLockscreenNotification({
     }
   }
 
-  // 2. Direct Window Notification fallback
+  // 4. Direct Window Notification fallback
   try {
     const notif = new Notification(notifTitle, notifOptions);
     return { success: true, method: "notification_constructor" };

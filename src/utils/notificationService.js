@@ -2,6 +2,7 @@ import {
   collection,
   addDoc,
   updateDoc,
+  deleteDoc,
   doc,
   query,
   where,
@@ -18,6 +19,7 @@ import {
 
 const LOCAL_NOTIF_KEY = "aeroops.local_notifications";
 const LOCAL_READ_SIGS_KEY = "aeroops.read_notification_sigs";
+const LOCAL_DELETED_SIGS_KEY = "aeroops.deleted_notification_sigs";
 const BOOTSTRAPPED_ADMIN_EMAIL = "123adam133@gmail.com";
 const ALLOWED_TYPES = ["FLIGHT_ASSIGNED", "FLIGHT_UPDATED", "GENERAL"];
 
@@ -71,6 +73,25 @@ function addReadSigs(sigs = []) {
     const current = Array.from(readReadSigs());
     const next = Array.from(new Set([...sigs, ...current])).slice(0, 400);
     localStorage.setItem(LOCAL_READ_SIGS_KEY, JSON.stringify(next));
+  } catch {}
+}
+
+function readDeletedSigs() {
+  try {
+    const raw = localStorage.getItem(LOCAL_DELETED_SIGS_KEY);
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw);
+    return new Set(Array.isArray(arr) ? arr : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function addDeletedSigs(sigs = []) {
+  try {
+    const current = Array.from(readDeletedSigs());
+    const next = Array.from(new Set([...sigs, ...current])).slice(0, 500);
+    localStorage.setItem(LOCAL_DELETED_SIGS_KEY, JSON.stringify(next));
   } catch {}
 }
 
@@ -227,6 +248,7 @@ function mergeNotifications(
   userMeta = {}
 ) {
   const readSigs = readReadSigs();
+  const deletedSigs = readDeletedSigs();
 
   const localMatching = readLocalNotifications().filter((n) =>
     doesNotificationMatchCrew(n, rawCrewId, safeCrewId, userMeta)
@@ -245,6 +267,17 @@ function mergeNotifications(
       ? new Date(item.createdAtIso).getTime() || 0
       : item.sortTime || 0;
     const sig = makeSig(item);
+    const itemKey = String(item.id || "");
+    const sheetKey = String(item.sheetId || "");
+
+    if (
+      deletedSigs.has(sig) ||
+      deletedSigs.has(itemKey) ||
+      (sheetKey && deletedSigs.has(sheetKey))
+    ) {
+      return; // Skip deleted items
+    }
+
     const dedupKey = `${String(item.flightNo || "").trim()}|${String(
       item.message || ""
     ).trim()}|${String(item.createdAtIso || "").slice(0, 16)}`;
@@ -350,19 +383,22 @@ export function subscribeToNotifications(crewId, callback, userMeta = {}) {
 
   pullFromGoogleSheets();
 
-  // Poll Google Sheets every 12s while visible + on focus so cross-device updates appear fast
+  // Adaptive polling: continuous background check even when screen is locked or browser is in background
+  let lastPollTime = Date.now();
   const pollInterval = setInterval(() => {
-    if (
+    if (disposed) return;
+    const isHidden =
       typeof document !== "undefined" &&
-      document.visibilityState !== "visible"
-    ) {
-      return;
-    }
+      document.visibilityState !== "visible";
+    // 10s when foreground, 20s when background/screen locked
+    const minInterval = isHidden ? 20000 : 10000;
+    if (Date.now() - lastPollTime < minInterval) return;
     if (hasPendingSheetMutations()) return;
+    lastPollTime = Date.now();
     pullFromGoogleSheets();
-  }, 12000);
+  }, 4000);
 
-  const onFocus = () => {
+  const onWakeOrFocus = () => {
     if (!hasPendingSheetMutations()) pullFromGoogleSheets();
   };
 
@@ -374,7 +410,11 @@ export function subscribeToNotifications(crewId, callback, userMeta = {}) {
   window.addEventListener("aeroops:notifications", onLocalUpdate);
   window.addEventListener("aeroops:sheetCacheUpdated", onLocalUpdate);
   window.addEventListener("storage", onLocalUpdate);
-  window.addEventListener("focus", onFocus);
+  window.addEventListener("focus", onWakeOrFocus);
+  window.addEventListener("online", onWakeOrFocus);
+  if (typeof document !== "undefined") {
+    document.addEventListener("visibilitychange", onWakeOrFocus);
+  }
 
   // Optional Firestore live listener when cloud user is verified
   const currentUser = getVerifiedCloudUser();
@@ -423,7 +463,11 @@ export function subscribeToNotifications(crewId, callback, userMeta = {}) {
     window.removeEventListener("aeroops:notifications", onLocalUpdate);
     window.removeEventListener("aeroops:sheetCacheUpdated", onLocalUpdate);
     window.removeEventListener("storage", onLocalUpdate);
-    window.removeEventListener("focus", onFocus);
+    window.removeEventListener("focus", onWakeOrFocus);
+    window.removeEventListener("online", onWakeOrFocus);
+    if (typeof document !== "undefined") {
+      document.removeEventListener("visibilitychange", onWakeOrFocus);
+    }
     if (unsubscribeFirestore) unsubscribeFirestore();
   };
 }
@@ -510,4 +554,77 @@ export async function markAllNotificationsRead(notifications = []) {
   await Promise.allSettled(
     unread.map((n) => markNotificationRead(n))
   );
+}
+
+export async function deleteNotification(notification) {
+  if (!notification) return;
+
+  const sig = makeSig(notification);
+  const sheetRowId =
+    notification.sheetId ||
+    (notification.fromSheet && !String(notification.id || "").startsWith("local_")
+      ? notification.id
+      : null);
+
+  addDeletedSigs(
+    [sig, notification.id, sheetRowId].filter(Boolean).map(String)
+  );
+
+  // 1. Remove from local mirror list
+  const list = readLocalNotifications().filter(
+    (n) =>
+      n.id !== notification.id &&
+      (!sheetRowId || (n.id !== sheetRowId && n.sheetId !== sheetRowId)) &&
+      !(n.message === notification.message && String(n.crewId) === String(notification.crewId))
+  );
+  writeLocalNotifications(list);
+
+  // 2. Remove from Google Sheets
+  const removeFn = notificationsAPI.remove || notificationsAPI.delete;
+  if (sheetRowId && removeFn) {
+    removeFn(sheetRowId).catch((err) => console.warn("Delete sheet notification warning:", err));
+  } else if (removeFn) {
+    const cachedSheet = readSheetCache("Notifications", []);
+    const matchedRow = cachedSheet.find(
+      (r) =>
+        String(r.crewId) === String(notification.crewId) &&
+        String(r.message) === String(notification.message)
+    );
+    if (matchedRow?.id) {
+      removeFn(matchedRow.id).catch(() => {});
+    }
+  }
+
+  // 3. Optional Firestore delete
+  const verifiedUser = getVerifiedCloudUser();
+  const fsId =
+    notification.firestoreId ||
+    (notification.fromFirestore ? notification.id : null);
+  if (fsId && verifiedUser) {
+    withTimeout(
+      deleteDoc(doc(db, "notifications", fsId)),
+      2500
+    ).catch(() => {});
+  }
+
+  window.dispatchEvent(new CustomEvent("aeroops:notifications"));
+}
+
+export async function deleteAllNotifications(notifications = []) {
+  if (!notifications || !notifications.length) {
+    writeLocalNotifications([]);
+    window.dispatchEvent(new CustomEvent("aeroops:notifications"));
+    return;
+  }
+
+  const sigs = notifications
+    .flatMap((n) => [makeSig(n), n.id, n.sheetId, n.firestoreId])
+    .filter(Boolean)
+    .map(String);
+
+  addDeletedSigs(sigs);
+  writeLocalNotifications([]);
+  window.dispatchEvent(new CustomEvent("aeroops:notifications"));
+
+  await Promise.allSettled(notifications.map((n) => deleteNotification(n)));
 }

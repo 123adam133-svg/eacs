@@ -68,7 +68,9 @@ export function SortableWidgetCard({
       {...(!editMode && canCustomize ? { ...attributes, ...listeners } : {})}
       className={`${getGridSpanClass(size)} rounded-xl border ${
         editMode ? "border-dashed ring-1 ring-[var(--brand-primary)]/20" : ""
-      } flex flex-col overflow-hidden transition-shadow select-none`}
+      } flex flex-col overflow-hidden transition-shadow ${
+        canCustomize ? "select-none" : ""
+      }`}
     >
       {/* Card Header */}
       <div

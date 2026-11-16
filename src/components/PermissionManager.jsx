@@ -20,6 +20,8 @@ import {
   Edit3,
   ChevronDown,
   ChevronRight,
+  Key,
+  Layers,
 } from 'lucide-react';
 import { db, useFirebase } from '../contexts/FirebaseProvider';
 import {
@@ -53,14 +55,24 @@ function isReadPermission(permKey) {
     permKey.endsWith('_view') ||
     permKey.endsWith('.docs') ||
     permKey.endsWith('_download') ||
+    permKey.endsWith('.download') ||
     permKey.endsWith('.card') ||
     permKey.endsWith('.audit') ||
     permKey.endsWith('.login_history') ||
     permKey.endsWith('.audit_log') ||
     (permKey.startsWith('portal.') &&
       !permKey.endsWith('_edit') &&
+      !permKey.endsWith('_manage') &&
+      permKey !== 'portal.journey_log' &&
       permKey !== 'portal.print_with_stamp') ||
-    permKey === 'crew.portal'
+    permKey === 'crew.portal' ||
+    permKey === 'crew.directory' ||
+    permKey === 'schedule.phone_directory' ||
+    permKey === 'schedule.trip_history' ||
+    permKey === 'documents.view_all_depts' ||
+    permKey === 'roster.view_all_groups' ||
+    permKey === 'reports.view_all' ||
+    permKey === 'settings.view_stamp'
   );
 }
 
@@ -406,23 +418,23 @@ export default function PermissionManager({
   };
 
   return (
-    <div className="space-y-4">
+    <div className="w-full space-y-3">
       {/* Header */}
       <div
-        className="rounded-2xl p-4 text-white flex flex-wrap items-center justify-between gap-3"
+        className="rounded-xl p-3 text-white flex flex-wrap items-center justify-between gap-2.5"
         style={{ background: 'var(--brand-gradient)' }}
       >
-        <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-xl bg-white/20 flex items-center justify-center">
-            <ShieldCheck className="w-6 h-6" />
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center shrink-0">
+            <ShieldCheck className="w-4 h-4" />
           </div>
           <div>
-            <h3 className="text-lg font-bold">
+            <h3 className="text-sm font-bold leading-tight">
               {lang === 'ar'
                 ? 'مدير الصلاحيات المتقدم (ACL)'
                 : 'Fine-Grained Permission Manager'}
             </h3>
-            <p className="text-xs opacity-85">
+            <p className="text-[11px] opacity-85">
               {lang === 'ar'
                 ? 'تحكم دقيق بصلاحيات القراءة والكتابة لكل وحدة حسب الدور الوظيفي'
                 : 'Toggle granular module Read & Write access per role'}
@@ -450,7 +462,7 @@ export default function PermissionManager({
       </div>
 
       {/* Role Selector */}
-      <div className="p-3 rounded-2xl flex flex-wrap gap-2" style={cardStyle}>
+      <div className="p-2.5 rounded-xl flex flex-wrap gap-1.5" style={cardStyle}>
         {unifiedRoles.map((r) => {
           const selected =
             activeRole?.name.toLowerCase() === r.name.toLowerCase();
@@ -459,7 +471,7 @@ export default function PermissionManager({
               key={r.name}
               type="button"
               onClick={() => setSelectedRoleKey(r.name)}
-              className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition"
               style={
                 selected
                   ? {
@@ -474,7 +486,7 @@ export default function PermissionManager({
                     }
               }
             >
-              <span>{r.icon}</span>
+              <Key className="w-3.5 h-3.5 opacity-80" />
               <span>{lang === 'ar' ? r.nameAr || r.name : r.name}</span>
             </button>
           );
@@ -483,14 +495,14 @@ export default function PermissionManager({
 
       {/* Active Role Module Read/Write Matrix */}
       {activeRole && (
-        <div className="p-4 rounded-2xl space-y-3" style={cardStyle}>
-          <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-[var(--border-default)]">
+        <div className="p-3.5 rounded-xl space-y-3" style={cardStyle}>
+          <div className="flex flex-wrap items-center justify-between gap-2.5 pb-2.5 border-b border-[var(--border-default)]">
             <div>
               <div
-                className="text-base font-bold flex items-center gap-2"
+                className="text-sm font-bold flex items-center gap-2"
                 style={{ color: 'var(--text-primary)' }}
               >
-                <span>{activeRole.icon}</span>
+                <Key className="w-4 h-4 text-sky-500" />
                 <span>
                   {lang === 'ar'
                     ? activeRole.nameAr || activeRole.name
@@ -546,7 +558,7 @@ export default function PermissionManager({
             </div>
           )}
 
-          <div className="divide-y divide-[var(--border-default)]">
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-2.5">
             {Object.entries(permissionsMap).map(([moduleKey, group]) => {
               const allKeys = group.perms.map((p) => p.key);
               const readKeys = allKeys.filter(isReadPermission);
@@ -561,7 +573,14 @@ export default function PermissionManager({
               const isOpen = Boolean(expandedModules[moduleKey]);
 
               return (
-                <div key={moduleKey} className="py-2.5">
+                <div
+                  key={moduleKey}
+                  className="p-2.5 rounded-xl border"
+                  style={{
+                    backgroundColor: 'var(--bg-app)',
+                    borderColor: 'var(--border-default)',
+                  }}
+                >
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <button
                       type="button"
@@ -571,16 +590,16 @@ export default function PermissionManager({
                           [moduleKey]: !prev[moduleKey],
                         }))
                       }
-                      className="flex items-center gap-2 text-sm font-bold text-start flex-1 min-w-[180px]"
+                      className="flex items-center gap-1.5 text-xs font-bold text-start flex-1 min-w-[160px]"
                       style={{ color: 'var(--text-primary)' }}
                     >
                       {isOpen ? (
-                        <ChevronDown className="w-4 h-4" />
+                        <ChevronDown className="w-3.5 h-3.5 shrink-0" />
                       ) : (
-                        <ChevronRight className="w-4 h-4" />
+                        <ChevronRight className="w-3.5 h-3.5 shrink-0" />
                       )}
-                      <span>{group.icon}</span>
-                      <span>
+                      <Layers className="w-3.5 h-3.5 text-sky-500 shrink-0" />
+                      <span className="truncate">
                         {lang === 'ar' ? group.label_ar : group.label_en}
                       </span>
                       <span

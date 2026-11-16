@@ -1,22 +1,22 @@
 /* ═══════════════════════════════════════════════════════════
- * CALENDAR VIEW — Modern Month Grid + Flight Details
- * v4.0 — Follows system theme (CSS Variables)
+ * CALENDAR VIEW — Ultra-Compact Full-Screen Month Grid + Flight Details
+ * v5.0 — Compact side-by-side or stacked layout to fit full viewport
  * ═══════════════════════════════════════════════════════════ */
 import React, { useState, useMemo } from "react";
 import {
   ChevronLeft,
   ChevronRight,
-  RotateCw,
-  Filter,
   Plane,
   Clock,
   Users,
+  Calendar,
 } from "lucide-react";
 import { useT } from "../contexts";
 import { MONTHS_EN, MONTHS_AR, DAYS_EN, DAYS_AR } from "../config/constants";
 import { fmtTime, safeArray, todayISO } from "../utils/helpers";
+import { AirportHoverCard } from "../components/AirportHoverCard";
 
-/* ⭐ أسماء الأيام (تبدأ من الإثنين مثل الصورة) */
+/* الأيام تبدأ من الإثنين */
 const WEEK_DAYS = ["M", "T", "W", "T", "F", "S", "S"];
 const WEEK_DAYS_AR = ["إث", "ثل", "أر", "خم", "جم", "سب", "أح"];
 
@@ -30,9 +30,9 @@ export function CalendarView({
   onSelectFlight,
 }) {
   const t = useT();
-  const lang = document.documentElement.lang || "en";
+  const lang = document.documentElement.lang || "ar";
 
-  /* ⭐ حالة الشهر المعروض */
+  /* حالة الشهر المعروض */
   const [viewYear, setViewYear] = useState(() => {
     return parseInt(selectedDate?.slice(0, 4)) || new Date().getFullYear();
   });
@@ -40,7 +40,7 @@ export function CalendarView({
     return parseInt(selectedDate?.slice(5, 7)) - 1 || new Date().getMonth();
   });
 
-  /* ⭐ اليوم النشط */
+  /* اليوم النشط */
   const [activeDay, setActiveDay] = useState(() => {
     return selectedDate || todayISO();
   });
@@ -48,7 +48,7 @@ export function CalendarView({
   const monthNames = lang === "ar" ? MONTHS_AR : MONTHS_EN;
   const weekDayNames = lang === "ar" ? WEEK_DAYS_AR : WEEK_DAYS;
 
-  /* ⭐ الرحلات مفهرسة حسب التاريخ */
+  /* فهرسة الرحلات حسب التاريخ */
   const flightsByDate = useMemo(() => {
     const map = {};
     (flights || []).forEach((f) => {
@@ -63,7 +63,7 @@ export function CalendarView({
     return map;
   }, [flights]);
 
-  /* ⭐ بناء شبكة الشهر (6 صفوف × 7 أعمدة) */
+  /* بناء شبكة الشهر (42 خلية) */
   const calendarGrid = useMemo(() => {
     const firstDay = new Date(Date.UTC(viewYear, viewMonth, 1));
     const lastDay = new Date(Date.UTC(viewYear, viewMonth + 1, 0));
@@ -71,10 +71,7 @@ export function CalendarView({
     const daysInMonth = lastDay.getUTCDate();
 
     const cells = [];
-
-    const prevMonthLastDay = new Date(
-      Date.UTC(viewYear, viewMonth, 0)
-    ).getUTCDate();
+    const prevMonthLastDay = new Date(Date.UTC(viewYear, viewMonth, 0)).getUTCDate();
 
     for (let i = firstWeekDay - 1; i >= 0; i--) {
       cells.push({
@@ -106,7 +103,7 @@ export function CalendarView({
 
   const today = todayISO();
 
-  /* ⭐ التنقل بين الأشهر */
+  /* التنقل بين الأشهر */
   const shiftMonth = (delta) => {
     const d = new Date(Date.UTC(viewYear, viewMonth + delta, 1));
     setViewYear(d.getUTCFullYear());
@@ -122,7 +119,6 @@ export function CalendarView({
     setSelectedDate?.(iso);
   };
 
-  /* ⭐ اختيار يوم */
   const handleSelectDay = (cell) => {
     if (!cell.currentMonth) {
       setViewYear(cell.date.getUTCFullYear());
@@ -133,330 +129,279 @@ export function CalendarView({
     setSelectedDate?.(iso);
   };
 
-  /* ⭐ الرحلات النشطة */
   const activeFlights = flightsByDate[activeDay] || [];
-
   const activeDateObj = new Date(activeDay + "T00:00:00Z");
   const activeDateLabel = `${activeDateObj.getUTCDate()} ${
     (lang === "ar" ? MONTHS_AR : MONTHS_EN)[activeDateObj.getUTCMonth()]
   } ${activeDateObj.getUTCFullYear()}`;
 
   return (
-    <div className="space-y-3 fade-in">
-      {/* ═══ Header ═══ */}
+    <div className="space-y-2.5 animate-in fade-in duration-150">
+      {/* ═══ Compact Header Bar ═══ */}
       <div
-        className="rounded-2xl p-4 flex items-center justify-between shadow-md-theme"
-        style={{ background: "var(--brand-gradient)", color: "white" }}
+        className="rounded-xl px-3 py-2 flex items-center justify-between shadow-xs border"
+        style={{
+          background: "var(--brand-gradient)",
+          color: "white",
+          borderColor: "var(--border-default)",
+        }}
       >
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           <button
+            type="button"
             onClick={() => shiftMonth(-1)}
-            className="p-1.5 rounded-lg hover:bg-white/20 transition"
-            title="Previous month"
+            className="p-1 rounded-md hover:bg-white/20 transition"
+            title="الشهر السابق"
           >
-            <ChevronLeft className="w-5 h-5" />
+            <ChevronLeft className="w-4 h-4" />
           </button>
           <button
+            type="button"
             onClick={goToday}
-            className="px-3 py-1 rounded-lg hover:bg-white/20 transition text-sm font-bold"
+            className="px-2.5 py-0.5 rounded-md hover:bg-white/20 transition text-xs font-bold font-mono"
           >
             {lang === "ar" ? "اليوم" : "Today"}
           </button>
           <button
+            type="button"
             onClick={() => shiftMonth(1)}
-            className="p-1.5 rounded-lg hover:bg-white/20 transition"
-            title="Next month"
+            className="p-1 rounded-md hover:bg-white/20 transition"
+            title="الشهر القادم"
           >
-            <ChevronRight className="w-5 h-5" />
+            <ChevronRight className="w-4 h-4" />
           </button>
         </div>
 
-        <h2 className="text-lg md:text-2xl font-black tracking-tight">
-          {monthNames[viewMonth]} {viewYear}
-        </h2>
+        <div className="flex items-center gap-2">
+          <Calendar className="w-4 h-4 opacity-80" />
+          <h2 className="text-sm md:text-base font-black tracking-tight">
+            {monthNames[viewMonth]} {viewYear}
+          </h2>
+        </div>
 
-        <div className="text-[10px] md:text-xs font-bold uppercase tracking-wider opacity-80">
-          {lang === "ar" ? "محدّث" : "UP TO DATE"}
+        <div className="text-[10px] font-mono font-bold uppercase tracking-wider opacity-90 px-2 py-0.5 rounded bg-black/20">
+          {activeFlights.length} {lang === "ar" ? "رحلات باليوم المحدد" : "Flights Selected"}
         </div>
       </div>
 
-      {/* ═══ Month Grid ═══ */}
-      <div
-        className="rounded-2xl overflow-hidden shadow-md-theme"
-        style={{
-          backgroundColor: "var(--bg-card)",
-          border: "1px solid var(--border-default)",
-        }}
-      >
-        {/* أسماء الأيام */}
+      {/* ═══ 2-Column Responsive Layout (Full Screen Fit) ═══ */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-2.5 items-start">
+        {/* Left: Compact Month Grid (7 cols) */}
         <div
-          className="grid grid-cols-7 text-center border-b"
-          style={{ borderColor: "var(--border-default)" }}
-        >
-          {weekDayNames.map((d, i) => (
-            <div
-              key={i}
-              className="py-2 text-xs md:text-sm font-bold uppercase"
-              style={{ color: "var(--text-muted)" }}
-            >
-              {d}
-            </div>
-          ))}
-        </div>
-
-        {/* الشبكة */}
-        <div className="grid grid-cols-7">
-          {calendarGrid.map((cell, idx) => {
-            const iso = cell.date.toISOString().slice(0, 10);
-            const dayFlights = flightsByDate[iso] || [];
-            const hasFlights = dayFlights.length > 0;
-            const isToday = iso === today;
-            const isActive = iso === activeDay;
-            const past = isPast
-              ? isPast({ std: cell.date.toISOString() })
-              : false;
-
-            let bgColor = "var(--bg-card)";
-            let textColor = cell.currentMonth
-              ? "var(--text-primary)"
-              : "var(--text-muted)";
-            let opacity = cell.currentMonth ? 1 : 0.4;
-
-            if (hasFlights) {
-              bgColor = "var(--brand-primary)";
-              textColor = "white";
-              opacity = 1;
-            } else if (past) {
-              bgColor = "var(--bg-app)";
-              textColor = "var(--text-muted)";
-              opacity = cell.currentMonth ? 0.7 : 0.4;
-            }
-
-            return (
-              <button
-                key={idx}
-                onClick={() => handleSelectDay(cell)}
-                className="relative aspect-square flex items-center justify-center text-sm md:text-base font-bold transition-all"
-                style={{
-                  backgroundColor: bgColor,
-                  color: textColor,
-                  opacity,
-                  borderRight:
-                    (idx + 1) % 7 !== 0
-                      ? "1px solid var(--border-default)"
-                      : "none",
-                  borderBottom:
-                    idx < 35 ? "1px solid var(--border-default)" : "none",
-                  boxShadow: isActive
-                    ? `inset 0 0 0 3px var(--brand-accent)`
-                    : isToday
-                    ? `inset 0 0 0 2px var(--brand-secondary)`
-                    : "none",
-                }}
-                title={
-                  hasFlights
-                    ? `${dayFlights.length} flight${
-                        dayFlights.length > 1 ? "s" : ""
-                      }`
-                    : ""
-                }
-              >
-                {cell.day}
-                {hasFlights && (
-                  <span className="absolute bottom-1.5 left-1/2 -translate-x-1/2 flex gap-0.5">
-                    {dayFlights.slice(0, 3).map((_, i) => (
-                      <span key={i} className="w-1 h-1 rounded-full bg-white" />
-                    ))}
-                  </span>
-                )}
-                {isToday && (
-                  <span
-                    className="absolute top-1 right-1 text-[8px] font-black px-1 rounded"
-                    style={{
-                      backgroundColor: "var(--brand-accent)",
-                      color: "white",
-                    }}
-                  >
-                    {lang === "ar" ? "اليوم" : "TODAY"}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* ═══ Flight Details ═══ */}
-      <div
-        className="rounded-2xl overflow-hidden shadow-md-theme"
-        style={{
-          backgroundColor: "var(--bg-card)",
-          border: "1px solid var(--border-default)",
-        }}
-      >
-        {/* رأس القائمة */}
-        <div
-          className="px-4 py-3 flex items-center justify-between"
+          className="lg:col-span-7 xl:col-span-8 rounded-xl overflow-hidden border shadow-xs"
           style={{
-            backgroundColor: "var(--bg-header)",
-            borderBottom: "1px solid var(--border-default)",
-            backdropFilter: "blur(12px)",
+            backgroundColor: "var(--bg-card)",
+            borderColor: "var(--border-default)",
           }}
         >
-          <h3
-            className="text-sm md:text-base font-black"
-            style={{ color: "var(--text-primary)" }}
-          >
-            {activeDateLabel}
-            {activeFlights.length > 0 && (
-              <span
-                className="ms-2 text-xs px-2 py-0.5 rounded-full font-bold"
-                style={{
-                  backgroundColor: "var(--brand-primary)",
-                  color: "white",
-                }}
-              >
-                {activeFlights.length}
-              </span>
-            )}
-          </h3>
-          <div className="flex items-center gap-1">
-            <button
-              className="p-1.5 rounded-lg hover:bg-white/10 transition"
-              style={{ color: "var(--text-muted)" }}
-              title="Refresh"
-            >
-              <RotateCw className="w-4 h-4" />
-            </button>
-            <button
-              className="p-1.5 rounded-lg hover:bg-white/10 transition"
-              style={{ color: "var(--text-muted)" }}
-              title="Filter"
-            >
-              <Filter className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-
-        {/* قائمة الرحلات */}
-        {activeFlights.length === 0 ? (
-          <div className="p-8 text-center">
-            <Plane
-              className="w-12 h-12 mx-auto mb-2 opacity-30"
-              style={{ color: "var(--text-muted)" }}
-            />
-            <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-              {lang === "ar" ? "لا توجد رحلات" : "No flights"}
-            </p>
-          </div>
-        ) : (
+          {/* Weekday headers */}
           <div
-            className="divide-y"
+            className="grid grid-cols-7 text-center border-b bg-slate-50 dark:bg-slate-900/60"
             style={{ borderColor: "var(--border-default)" }}
           >
-            {activeFlights.map((f) => {
-              const crewSlots = safeArray(f.crewSlots);
-              const crewNames = crewSlots
-                .map((slot) => {
-                  const member = crew.find((c) => c.id === slot.crewId);
-                  if (!member) return null;
-                  return member.empNo
-                    ? member.empNo
-                    : member.fullName
-                    ? member.fullName.slice(0, 3).toUpperCase()
-                    : "—";
-                })
-                .filter(Boolean);
+            {weekDayNames.map((d, i) => (
+              <div
+                key={i}
+                className="py-1 text-[11px] font-bold uppercase"
+                style={{ color: "var(--text-muted)" }}
+              >
+                {d}
+              </div>
+            ))}
+          </div>
 
-              const status = (f.status || "SCHEDULED").toUpperCase();
-              const statusColor =
-                status === "CANCELLED"
-                  ? "#ef4444"
-                  : status === "ARRIVED"
-                  ? "#22c55e"
-                  : status === "DEPARTED" || status === "IN_FLIGHT"
-                  ? "#3b82f6"
-                  : status === "DELAYED"
-                  ? "#f59e0b"
-                  : "var(--brand-primary)";
+          {/* 42 compact day cells */}
+          <div className="grid grid-cols-7">
+            {calendarGrid.map((cell, idx) => {
+              const iso = cell.date.toISOString().slice(0, 10);
+              const dayFlights = flightsByDate[iso] || [];
+              const hasFlights = dayFlights.length > 0;
+              const isToday = iso === today;
+              const isActive = iso === activeDay;
+              const past = isPast ? isPast({ std: cell.date.toISOString() }) : false;
+
+              let bgColor = "var(--bg-card)";
+              let textColor = cell.currentMonth ? "var(--text-primary)" : "var(--text-muted)";
+              let opacity = cell.currentMonth ? 1 : 0.35;
+
+              if (hasFlights) {
+                bgColor = "var(--brand-primary)";
+                textColor = "white";
+                opacity = 1;
+              } else if (past) {
+                bgColor = "var(--bg-app)";
+                textColor = "var(--text-muted)";
+                opacity = cell.currentMonth ? 0.75 : 0.35;
+              }
 
               return (
                 <button
-                  key={f.id}
-                  onClick={() => onSelectFlight?.(f)}
-                  className="w-full text-start px-3 py-2.5 hover:bg-white/5 transition group"
-                  style={{ borderLeft: `4px solid ${statusColor}` }}
+                  key={idx}
+                  type="button"
+                  onClick={() => handleSelectDay(cell)}
+                  className="relative h-10 sm:h-12 flex flex-col items-center justify-center text-xs sm:text-sm font-bold transition-all"
+                  style={{
+                    backgroundColor: bgColor,
+                    color: textColor,
+                    opacity,
+                    borderRight: (idx + 1) % 7 !== 0 ? "1px solid var(--border-default)" : "none",
+                    borderBottom: idx < 35 ? "1px solid var(--border-default)" : "none",
+                    boxShadow: isActive
+                      ? `inset 0 0 0 2.5px #f59e0b`
+                      : isToday
+                      ? `inset 0 0 0 2px #38bdf8`
+                      : "none",
+                  }}
+                  title={
+                    hasFlights
+                      ? `${dayFlights.length} flight${dayFlights.length > 1 ? "s" : ""}`
+                      : ""
+                  }
                 >
-                  {/* الصف الأول */}
-                  <div className="flex items-center justify-between gap-2 mb-1">
-                    <div className="flex items-center gap-2 min-w-0 flex-1">
-                      <span
-                        className="font-mono font-black text-sm md:text-base"
-                        style={{ color: "var(--text-primary)" }}
-                      >
-                        {f.flightNo}
+                  <span className="font-mono">{cell.day}</span>
+                  {hasFlights && (
+                    <span className="flex items-center gap-0.5 mt-0.5">
+                      <span className="text-[9px] font-mono font-black px-1 rounded-full bg-white/30 text-white">
+                        {dayFlights.length}
                       </span>
-                      <span
-                        className="text-xs md:text-sm font-mono"
-                        style={{ color: "var(--text-muted)" }}
-                      >
-                        {fmtTime(f.std, timeMode)}{" "}
-                        <span style={{ color: "var(--brand-primary)" }}>
-                          {f.dep}
-                        </span>{" "}
-                        <span style={{ color: "var(--text-muted)" }}>→</span>{" "}
-                        {fmtTime(f.sta, timeMode)}{" "}
-                        <span style={{ color: "var(--brand-primary)" }}>
-                          {f.arr}
-                        </span>
-                      </span>
-                    </div>
+                    </span>
+                  )}
+                  {isToday && (
                     <span
-                      className="font-mono font-bold text-[11px] md:text-xs px-2 py-0.5 rounded"
+                      className="absolute top-0.5 end-0.5 text-[7px] font-mono font-black px-0.5 rounded"
                       style={{
-                        backgroundColor: "var(--bg-app)",
-                        color: "var(--brand-primary)",
-                        border: "1px solid var(--border-default)",
+                        backgroundColor: "var(--brand-accent)",
+                        color: "white",
                       }}
                     >
-                      {f.acft}
+                      {lang === "ar" ? "اليوم" : "NOW"}
                     </span>
-                  </div>
-
-                  {/* الصف الثاني */}
-                  <div className="flex items-center justify-between gap-2">
-                    <div
-                      className="flex items-center gap-1.5 text-[10px] md:text-xs font-mono truncate min-w-0 flex-1"
-                      style={{ color: "var(--text-muted)" }}
-                    >
-                      <Plane
-                        className="w-3 h-3 flex-shrink-0"
-                        style={{ color: "var(--brand-primary)" }}
-                      />
-                      <span className="truncate">
-                        {lang === "ar" ? "الطاقم:" : "Crew:"}{" "}
-                        {crewNames.length > 0 ? crewNames.join("-") : "—"}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1 flex-shrink-0">
-                      <span className="text-[10px] opacity-70">
-                        {crewNames.length}
-                      </span>
-                      <div
-                        className="w-2.5 h-2.5 rounded-full"
-                        style={{ backgroundColor: statusColor }}
-                        title={status}
-                      />
-                    </div>
-                  </div>
+                  )}
                 </button>
               );
             })}
           </div>
-        )}
+        </div>
+
+        {/* Right: Selected Day Flights Panel */}
+        <div
+          className="lg:col-span-5 xl:col-span-4 rounded-xl border shadow-xs overflow-hidden flex flex-col max-h-[500px]"
+          style={{
+            backgroundColor: "var(--bg-card)",
+            borderColor: "var(--border-default)",
+          }}
+        >
+          {/* Header */}
+          <div
+            className="px-3 py-2 border-b flex items-center justify-between shrink-0"
+            style={{
+              backgroundColor: "var(--bg-app)",
+              borderColor: "var(--border-default)",
+            }}
+          >
+            <div>
+              <div className="text-xs font-bold" style={{ color: "var(--text-primary)" }}>
+                {activeDateLabel}
+              </div>
+              <div className="text-[10px] text-slate-500 font-mono">
+                {activeFlights.length} {lang === "ar" ? "رحلات مسجلة" : "flights registered"}
+              </div>
+            </div>
+            {activeFlights.length > 0 && (
+              <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-sky-500/15 text-sky-600 border border-sky-500/30">
+                {activeFlights.length} FLTS
+              </span>
+            )}
+          </div>
+
+          {/* Flights list */}
+          <div className="overflow-y-auto divide-y flex-1" style={{ borderColor: "var(--border-default)" }}>
+            {activeFlights.length === 0 ? (
+              <div className="p-8 text-center space-y-1">
+                <Plane className="w-8 h-8 mx-auto text-slate-300 dark:text-slate-700" />
+                <p className="text-xs text-slate-400">
+                  {lang === "ar" ? "لا توجد رحلات مجدولة لهذا اليوم" : "No flights scheduled for this day"}
+                </p>
+              </div>
+            ) : (
+              activeFlights.map((f) => {
+                const crewSlots = safeArray(f.crewSlots);
+                const crewCodes = crewSlots
+                  .map((slot) => {
+                    const member = crew.find((c) => String(c.id) === String(slot.crewId));
+                    return member ? (member.empNo || member.id) : null;
+                  })
+                  .filter(Boolean);
+
+                const status = (f.status || "SCHEDULED").toUpperCase();
+                const statusColor =
+                  status === "CANCELLED"
+                    ? "#ef4444"
+                    : status === "ARRIVED"
+                    ? "#22c55e"
+                    : status === "DEPARTED" || status === "IN_FLIGHT"
+                    ? "#3b82f6"
+                    : status === "DELAYED"
+                    ? "#f59e0b"
+                    : "#0284c7";
+
+                return (
+                  <button
+                    key={f.id}
+                    type="button"
+                    onClick={() => onSelectFlight?.(f)}
+                    className="w-full text-start p-2.5 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition group"
+                    style={{ borderInlineStart: `3px solid ${statusColor}` }}
+                  >
+                    <div className="flex items-center justify-between gap-1 mb-1">
+                      <div className="flex items-center gap-1.5 font-mono">
+                        <span className="font-bold text-xs text-sky-600 dark:text-sky-400">
+                          {f.flightNo}
+                        </span>
+                        <span className="text-[10px] px-1 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-bold">
+                          {f.acft || "—"}
+                        </span>
+                      </div>
+                      <span className="text-[10px] font-mono text-slate-500">
+                        {fmtTime(f.std, timeMode)}z
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-1 text-[11px] font-mono font-bold">
+                      <div className="flex items-center gap-1">
+                        <AirportHoverCard code={f.dep}>
+                          <span className="text-slate-800 dark:text-slate-200 hover:underline">{f.dep}</span>
+                        </AirportHoverCard>
+                        <span className="text-slate-400">➔</span>
+                        <AirportHoverCard code={f.arr}>
+                          <span className="text-slate-800 dark:text-slate-200 hover:underline">{f.arr}</span>
+                        </AirportHoverCard>
+                      </div>
+
+                      {f.flightNature === "FERRY" ? (
+                        <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-500/20 text-amber-700 dark:text-amber-300">
+                          FERRY
+                        </span>
+                      ) : (
+                        <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-cyan-500/20 text-cyan-700 dark:text-cyan-300">
+                          PAX {f.pax !== undefined && f.pax !== null && f.pax !== "" ? `(${f.pax})` : ""}
+                        </span>
+                      )}
+                    </div>
+
+                    {crewCodes.length > 0 && (
+                      <div className="flex items-center gap-1 text-[10px] text-slate-400 font-mono mt-1 truncate">
+                        <Users className="w-3 h-3 text-slate-400 shrink-0" />
+                        <span className="truncate">{crewCodes.join(" · ")}</span>
+                      </div>
+                    )}
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );
 }
-
-export default CalendarView;

@@ -29,6 +29,9 @@ import {
   Calendar,
   Award,
   Target,
+  LayoutGrid,
+  Table,
+  List,
 } from "lucide-react";
 import { useT, useAuth } from "../contexts";
 import { Field } from "../components/ui/Field";
@@ -659,9 +662,9 @@ export function Crew({
       setCrew(crew.map((c) => (c.id === docsCrew.id ? { ...updated } : c)));
       setDocsCrew(null);
       setDocsDraft([]);
-      showToast("✅ " + (t.saved || "تم الحفظ"));
+      showToast(t.saved || "تم الحفظ بنجاح", "success");
     } catch (e) {
-      showToast("Save failed: " + e.message);
+      showToast("Save failed: " + e.message, "error");
     } finally {
       setDocsSaving(false);
     }
@@ -701,12 +704,12 @@ export function Crew({
         setUsers((prev) => [...(prev || []), newUserObj]);
       }
       showToast(
-        `✅ تم إنشاء المستخدم\n\n👤 ${userDraft.fullName}\n🔑 ${userDraft.username}\n🔒 ${userDraft.password}`
+        `تم إنشاء المستخدم بنجاح\n\nاسم الموظف: ${userDraft.fullName}\nاسم المستخدم: ${userDraft.username}\nكلمة المرور: ${userDraft.password}`
       );
       setCreateUserCrew(null);
       setUserDraft({});
     } catch (e) {
-      showToast("❌ " + e.message);
+      showToast(e.message || "حدث خطأ أثناء حفظ المستخدم");
     } finally {
       setUserSaving(false);
     }
@@ -716,260 +719,217 @@ export function Crew({
     canEdit || canDocsView || canCard || canDelete || canCreateUser;
 
   return (
-    <div className="space-y-4 fade-in">
-      {/* ═══ Header ═══ */}
-      <div className="flex flex-wrap gap-3 items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div
-            className="w-12 h-12 rounded-xl flex items-center justify-center shadow-md"
-            style={{ background: "var(--brand-gradient)" }}
-          >
-            <CrewTableIcon className="w-7 h-7 text-white" />
-          </div>
-          <div>
-            <h2
-              className="text-lg font-bold flex items-center gap-2"
-              style={{ color: "var(--text-primary)" }}
-            >
-              <span>{t.crew || "CREW STATUS"}</span>
-              <span
-                className="text-xs px-2 py-0.5 rounded-full font-mono"
-                style={{
-                  backgroundColor: "var(--bg-app)",
-                  color: "var(--brand-primary)",
-                }}
-              >
-                {sorted.length} / {crew.length}
-              </span>
-            </h2>
-            <div className="text-xs" style={{ color: "var(--text-muted)" }}>
-              {metrics.active} {t.active || "Active"} · {metrics.assigned}{" "}
-              {t.assignedToAcft || "Assigned"} · {metrics.total}{" "}
-              {t.all || "Total"}
-            </div>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <div
-            className="flex rounded-lg overflow-hidden"
-            style={{ border: "1px solid var(--border-default)" }}
-          >
-            {[
-              { id: "cards", l: "⊞", title: "Cards" },
-              { id: "table", l: "☰", title: "Table" },
-              { id: "list", l: "≡", title: "List" },
-            ].map((v) => (
-              <button
-                key={v.id}
-                onClick={() => setViewMode(v.id)}
-                title={v.title}
-                className="px-3 py-1.5 text-sm font-bold transition"
-                style={
-                  viewMode === v.id
-                    ? {
-                        background: "var(--brand-gradient)",
-                        color: "white",
-                      }
-                    : {
-                        backgroundColor: "var(--bg-card)",
-                        color: "var(--text-muted)",
-                      }
-                }
-              >
-                {v.l}
-              </button>
-            ))}
-          </div>
-
-          {canCreate && (
-            <button
-              onClick={openNew}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white"
-              style={{
-                background: "var(--brand-gradient)",
-                boxShadow: "var(--shadow-md)",
-              }}
-            >
-              <Plus className="w-4 h-4" /> {t.addCrew || "Add Crew"}
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* ═══ Metric Cards ═══ */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
-        {[
-          {
-            id: "all",
-            label: t.all || "إجمالي الطاقم",
-            count: metrics.total,
-            icon: User,
-            color: "var(--brand-primary)",
-          },
-          {
-            id: "active",
-            label: t.active || "النشطون",
-            count: metrics.active,
-            icon: Check,
-            color: "#22c55e",
-          },
-          {
-            id: "assigned",
-            label: t.assignedToAcft || "مرتبط بطائرات",
-            count: metrics.assigned,
-            icon: Plane,
-            color: "#f59e0b",
-          },
-          {
-            id: "expiring",
-            label: t.expiringSoonDocs || "تنبيه وثائق",
-            count: metrics.expiring,
-            icon: ShieldAlert,
-            color: metrics.expiring > 0 ? "#f43f5e" : "#94a3b8",
-          },
-          {
-            id: "inactive",
-            label: t.inactive || "غير نشط",
-            count: metrics.inactive,
-            icon: Calendar,
-            color: "#94a3b8",
-          },
-        ].map((item) => {
-          const Icon = item.icon;
-          const isSelected = statusQuickFilter === item.id;
-          return (
-            <button
-              key={item.id}
-              onClick={() => setStatusQuickFilter(item.id)}
-              className="p-2.5 rounded-xl text-start transition relative overflow-hidden"
-              style={{
-                backgroundColor: isSelected
-                  ? "var(--bg-app)"
-                  : "var(--bg-card)",
-                border: isSelected
-                  ? `2px solid var(--brand-primary)`
-                  : `1px solid var(--border-default)`,
-                boxShadow: isSelected ? "var(--shadow-md)" : "var(--shadow-sm)",
-              }}
-            >
-              <div className="flex items-center justify-between">
-                <span
-                  className="text-[11px] font-semibold truncate"
-                  style={{ color: "var(--text-muted)" }}
-                >
-                  {item.label}
-                </span>
-                <Icon className="w-3.5 h-3.5" style={{ color: item.color }} />
-              </div>
-              <div
-                className="text-xl font-bold mt-1 font-mono"
-                style={{ color: "var(--text-primary)" }}
-              >
-                {item.count}
-              </div>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* ═══ Toolbar ═══ */}
+    <div className="space-y-2 fade-in">
+      {/* ═══ Compact Header & Quick Status Strip ═══ */}
       <div
-        className="p-3 rounded-xl flex flex-wrap gap-2.5 items-center justify-between"
+        className="p-2 rounded-lg space-y-1.5"
         style={{
           backgroundColor: "var(--bg-card)",
           border: "1px solid var(--border-default)",
-          boxShadow: "var(--shadow-sm)",
         }}
       >
-        <div className="flex flex-wrap gap-2 items-center flex-1 min-w-[280px]">
-          <div className="relative min-w-[200px] flex-1">
-            <Search
-              className="w-4 h-4 absolute top-1/2 -translate-y-1/2 start-3"
-              style={{ color: "var(--text-muted)" }}
-            />
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder={t.search || "بحث..."}
-              className="ps-9 h-9 text-xs"
-            />
+        <div className="flex flex-wrap gap-2 items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div
+              className="w-7 h-7 rounded-md flex items-center justify-center shrink-0"
+              style={{ background: "var(--brand-gradient)" }}
+            >
+              <CrewTableIcon className="w-3.5 h-3.5 text-white" />
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="text-xs font-bold tracking-tight" style={{ color: "var(--text-primary)" }}>
+                {t.crew || "CREW STATUS"}
+              </h2>
+              <span
+                className="text-[10px] px-1.5 py-0.5 rounded font-mono tabular-nums font-bold"
+                style={{
+                  backgroundColor: "var(--bg-app)",
+                  color: "var(--brand-primary)",
+                  border: "1px solid var(--border-default)",
+                }}
+              >
+                {sorted.length}/{crew.length}
+              </span>
+              <div className="hidden sm:flex items-center gap-1 flex-wrap">
+                {[
+                  { id: "all", label: t.all || "الكل", count: metrics.total, color: "var(--brand-primary)" },
+                  { id: "active", label: t.active || "نشط", count: metrics.active, color: "#16a34a" },
+                  { id: "assigned", label: t.assignedToAcft || "معيّن", count: metrics.assigned, color: "#d97706" },
+                  { id: "expiring", label: t.expiringSoonDocs || "وثائق", count: metrics.expiring, color: metrics.expiring > 0 ? "#dc2626" : "#94a3b8" },
+                  { id: "inactive", label: t.inactive || "غير نشط", count: metrics.inactive, color: "#64748b" },
+                ].map((item) => {
+                  const isSelected = statusQuickFilter === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => setStatusQuickFilter(item.id)}
+                      className="h-6 px-2 rounded-md text-[10.5px] font-semibold transition inline-flex items-center gap-1 cursor-pointer"
+                      style={
+                        isSelected
+                          ? {
+                              backgroundColor: "var(--bg-app)",
+                              border: "1.5px solid var(--brand-primary)",
+                              color: "var(--text-primary)",
+                            }
+                          : {
+                              backgroundColor: "transparent",
+                              border: "1px solid var(--border-default)",
+                              color: "var(--text-muted)",
+                            }
+                      }
+                    >
+                      <span>{item.label}</span>
+                      <span className="font-mono tabular-nums font-bold" style={{ color: item.color }}>
+                        {item.count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           </div>
 
-          <Select
-            value={roleFilter}
-            onChange={(e) => setRoleFilter(e.target.value)}
-            className="w-auto h-9 text-xs"
-          >
-            <option value="">👤 {t.allStatuses || "All Roles"}</option>
-            {roleChoices.map((r) => (
-              <option key={r} value={r}>
-                {t[r] || r}
-              </option>
-            ))}
-          </Select>
+          <div className="flex items-center gap-1.5">
+            <div
+              className="flex rounded-md overflow-hidden"
+              style={{ border: "1px solid var(--border-default)" }}
+            >
+              {[
+                { id: "cards", Icon: LayoutGrid, title: "Cards" },
+                { id: "table", Icon: Table, title: "Table" },
+                { id: "list", Icon: List, title: "List" },
+              ].map((v) => {
+                const VIcon = v.Icon;
+                return (
+                  <button
+                    key={v.id}
+                    type="button"
+                    onClick={() => setViewMode(v.id)}
+                    title={v.title}
+                    className="h-7 w-7 transition flex items-center justify-center cursor-pointer"
+                    style={
+                      viewMode === v.id
+                        ? { background: "var(--brand-gradient)", color: "white" }
+                        : { backgroundColor: "var(--bg-card)", color: "var(--text-muted)" }
+                    }
+                  >
+                    <VIcon className="w-3.5 h-3.5" />
+                  </button>
+                );
+              })}
+            </div>
 
-          <Select
-            value={acftFilter}
-            onChange={(e) => setAcftFilter(e.target.value)}
-            className="w-auto h-9 text-xs"
-          >
-            <option value="">✈️ {t.allAircraft || "All Aircraft"}</option>
-            {fleet.map((a) => (
-              <option key={a.id || a.reg} value={a.reg}>
-                {a.reg} ({a.type})
-              </option>
-            ))}
-          </Select>
+            {canCreate && (
+              <button
+                type="button"
+                onClick={openNew}
+                className="h-7 flex items-center gap-1 px-2.5 rounded-md text-[11px] font-semibold text-white transition hover:opacity-95 cursor-pointer"
+                style={{ background: "var(--brand-gradient)" }}
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>{t.addCrew || "Add Crew"}</span>
+              </button>
+            )}
+          </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        {/* Single Compact Filter Row */}
+        <div className="flex flex-wrap gap-1.5 items-center justify-between pt-1.5 border-t" style={{ borderColor: "var(--border-default)" }}>
+          <div className="flex flex-wrap gap-1.5 items-center flex-1 min-w-[220px]">
+            <div className="relative min-w-[150px] flex-1 max-w-xs">
+              <Search
+                className="w-3 h-3 absolute top-1/2 -translate-y-1/2 start-2"
+                style={{ color: "var(--text-muted)" }}
+              />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder={t.search || "بحث..."}
+                className="ps-7 h-7 text-[11px]"
+              />
+            </div>
+
+            <Select
+              value={roleFilter}
+              onChange={(e) => setRoleFilter(e.target.value)}
+              className="w-auto h-7 text-[11px] py-0"
+            >
+              <option value="">{t.allStatuses || "All Roles"}</option>
+              {roleChoices.map((r) => (
+                <option key={r} value={r}>
+                  {t[r] || r}
+                </option>
+              ))}
+            </Select>
+
+            <Select
+              value={acftFilter}
+              onChange={(e) => setAcftFilter(e.target.value)}
+              className="w-auto h-7 text-[11px] py-0"
+            >
+              <option value="">{t.allAircraft || "All Aircraft"}</option>
+              {fleet.map((a) => (
+                <option key={a.id || a.reg} value={a.reg}>
+                  {a.reg} ({a.type})
+                </option>
+              ))}
+            </Select>
+
+            {(search || roleFilter || acftFilter || statusQuickFilter !== "all") && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearch("");
+                  setRoleFilter("");
+                  setAcftFilter("");
+                  setStatusQuickFilter("all");
+                }}
+                className="h-7 px-2 rounded text-[10px] font-bold bg-rose-500/10 text-rose-500 hover:bg-rose-500/20 border border-rose-500/25 cursor-pointer"
+              >
+                {t.clear || "مسح"}
+              </button>
+            )}
+          </div>
+
           <div
-            className="flex items-center gap-1.5 px-2 py-1 rounded-lg"
+            className="flex items-center gap-1 px-2 rounded-md h-7 shrink-0"
             style={{
               backgroundColor: "var(--bg-app)",
               border: "1px solid var(--border-default)",
             }}
           >
-            <ArrowUpDown
-              className="w-3.5 h-3.5"
-              style={{ color: "var(--text-muted)" }}
-            />
+            <ArrowUpDown className="w-3 h-3 shrink-0" style={{ color: "var(--text-muted)" }} />
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value)}
-              className="bg-transparent text-xs font-bold focus:outline-none cursor-pointer"
+              className="bg-transparent text-[11px] font-semibold focus:outline-none cursor-pointer"
               style={{ color: "var(--text-primary)" }}
             >
-              <option value="role">👑 {t.sortRole || "Role"}</option>
-              <option value="name">🔤 {t.sortName || "Name"}</option>
-              <option value="empNo">🔢 {t.sortEmpNo || "Emp No"}</option>
-              <option value="aircraft">
-                ✈️ {t.sortAircraft || "Aircraft"}
-              </option>
-              <option value="ftl28">⏱️ FTL28</option>
-              <option value="medical">🩺 Medical</option>
-              <option value="license">📜 License</option>
-              <option value="status">🟢 Status</option>
+              <option value="role">{t.sortRole || "Role"}</option>
+              <option value="name">{t.sortName || "Name"}</option>
+              <option value="empNo">{t.sortEmpNo || "Emp No"}</option>
+              <option value="aircraft">{t.sortAircraft || "Aircraft"}</option>
+              <option value="ftl28">FTL 28d</option>
+              <option value="medical">Medical</option>
+              <option value="license">License</option>
+              <option value="status">Status</option>
             </select>
             <button
+              type="button"
               onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
-              className="p-1 rounded transition"
+              className="p-0.5 rounded transition hover:opacity-80 cursor-pointer"
               style={{ color: "var(--brand-primary)" }}
             >
-              {sortDir === "asc" ? (
-                <ArrowUp className="w-3.5 h-3.5" />
-              ) : (
-                <ArrowDown className="w-3.5 h-3.5" />
-              )}
+              {sortDir === "asc" ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />}
             </button>
           </div>
         </div>
       </div>
 
-      {/* ═══ CARDS VIEW ═══ */}
+      {/* ═══ COMPACT CARDS VIEW ═══ */}
       {viewMode === "cards" && (
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-2">
           {sorted.map((c) => {
             const medSt = docStatus(c.medicalExpiry);
             const licSt = docStatus(c.licenseExpiry);
@@ -986,25 +946,16 @@ export function Crew({
             return (
               <div
                 key={c.id}
-                className="rounded-xl p-4 space-y-3 transition flex flex-col justify-between"
+                className="rounded-lg p-2.5 space-y-1.5 transition flex flex-col justify-between hover:border-sky-500/40"
                 style={{
                   backgroundColor: "var(--bg-card)",
                   border: "1px solid var(--border-default)",
-                  boxShadow: "var(--shadow-sm)",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.boxShadow = "var(--shadow-md)";
-                  e.currentTarget.style.transform = "translateY(-2px)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.boxShadow = "var(--shadow-sm)";
-                  e.currentTarget.style.transform = "translateY(0)";
                 }}
               >
-                <div>
-                  <div className="flex items-start gap-3">
+                <div className="space-y-1.5">
+                  <div className="flex items-start gap-2">
                     <div
-                      className="w-14 h-14 rounded-full overflow-hidden flex-shrink-0"
+                      className="w-9 h-9 rounded-full overflow-hidden flex-shrink-0"
                       style={{
                         backgroundColor: "var(--bg-app)",
                         border: "1px solid var(--border-default)",
@@ -1018,222 +969,202 @@ export function Crew({
                         />
                       ) : (
                         <div
-                          className="w-full h-full flex items-center justify-center font-bold text-lg"
-                          style={{
-                            background: "var(--brand-gradient)",
-                            color: "white",
-                          }}
+                          className="w-full h-full flex items-center justify-center font-bold text-xs"
+                          style={{ background: "var(--brand-gradient)", color: "white" }}
                         >
                           {initials(c.fullName)}
                         </div>
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div
-                        className="font-bold truncate flex items-center gap-1.5"
-                        style={{ color: "var(--text-primary)" }}
-                      >
-                        <span className="truncate">{c.fullName}</span>
-                        {c.role === "captain" && (
-                          <CrewQualifiedIcon
-                            className="w-3.5 h-3.5"
-                            style={{ color: "var(--brand-primary)" }}
-                          />
-                        )}
-                        {hasCritical && (
-                          <CrewWarningIcon className="w-3.5 h-3.5 text-rose-500 animate-pulse" />
-                        )}
-                      </div>
-                      <div
-                        className="text-xs"
-                        style={{ color: "var(--text-muted)" }}
-                      >
-                        {t[c.role] || c.role} · {c.empNo}
-                      </div>
-
-                      {secondary.length > 0 && (
-                        <div className="flex flex-wrap gap-1 mt-1">
-                          {secondary.map((r) => {
-                            const pos = dynamicPositions.find(
-                              (p) => p.key === r
-                            );
-                            return (
-                              <span
-                                key={r}
-                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-indigo-500/15 text-indigo-400 border border-indigo-500/40"
-                                title={`Secondary: ${pos?.en || r}`}
-                              >
-                                🎯 {pos?.short || r}
-                              </span>
-                            );
-                          })}
+                      <div className="flex items-center justify-between gap-1">
+                        <div
+                          className="font-bold text-xs truncate flex items-center gap-1"
+                          style={{ color: "var(--text-primary)" }}
+                        >
+                          <span className="truncate">{c.fullName}</span>
+                          {c.role === "captain" && (
+                            <CrewQualifiedIcon
+                              className="w-3 h-3 shrink-0"
+                              style={{ color: "var(--brand-primary)" }}
+                            />
+                          )}
+                          {hasCritical && (
+                            <CrewWarningIcon className="w-3 h-3 text-rose-500 shrink-0" />
+                          )}
                         </div>
-                      )}
-
-                      <div className="mt-1.5">
-                        {assignedAcfts.length > 0 ? (
-                          <div className="flex flex-wrap gap-1">
-                            {assignedAcfts.map((acft) => (
-                              <span
-                                key={acft}
-                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-amber-500/15 text-amber-400 font-mono font-bold text-[10px] border border-amber-500/40"
-                              >
-                                <Plane className="w-2.5 h-2.5" />
-                                <span>{acft}</span>
-                              </span>
-                            ))}
-                          </div>
-                        ) : (
-                          <span
-                            className="inline-flex items-center gap-1 text-[10px] italic"
-                            style={{ color: "var(--text-muted)" }}
-                          >
-                            ✈️ {t.allAircraft || "كل الأسطول"}
-                          </span>
-                        )}
+                        <Badge kind={c.status}>{t[c.status] || c.status}</Badge>
                       </div>
-
                       <div
-                        className="text-xs flex items-center gap-1 mt-1"
+                        className="text-[10.5px] truncate font-mono mt-0.5"
                         style={{ color: "var(--text-muted)" }}
                       >
-                        <Mail className="w-3 h-3" />
-                        <span className="truncate">{c.email || "—"}</span>
+                        {t[c.role] || c.role} · #{c.empNo || "—"}
                       </div>
                     </div>
-                    <Badge kind={c.status}>{t[c.status] || c.status}</Badge>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-2 text-xs mt-3">
-                    <div
-                      className="p-2 rounded text-center"
-                      style={{ backgroundColor: "var(--bg-app)" }}
-                    >
-                      <CrewBlockHoursIcon
-                        className="w-4 h-4 mx-auto mb-1"
-                        style={{ color: "var(--brand-primary)" }}
-                      />
-                      <div
-                        className="text-[10px]"
+                  {/* Compact Meta Badges (Secondary Roles + Aircraft + Email) */}
+                  <div className="flex flex-wrap items-center gap-1 min-h-[18px]">
+                    {secondary.slice(0, 2).map((r) => {
+                      const pos = dynamicPositions.find((p) => p.key === r);
+                      return (
+                        <span
+                          key={r}
+                          className="inline-flex items-center gap-0.5 px-1 py-0.2 rounded text-[9px] font-bold bg-indigo-500/12 text-indigo-400 border border-indigo-500/25"
+                          title={`Secondary: ${pos?.en || r}`}
+                        >
+                          {pos?.short || r}
+                        </span>
+                      );
+                    })}
+                    {assignedAcfts.length > 0 ? (
+                      assignedAcfts.slice(0, 3).map((acft) => (
+                        <span
+                          key={acft}
+                          className="inline-flex items-center gap-0.5 px-1 py-0.2 rounded bg-amber-500/12 text-amber-500 font-mono font-bold text-[9px] border border-amber-500/25"
+                        >
+                          {acft}
+                        </span>
+                      ))
+                    ) : (
+                      <span
+                        className="text-[9.5px] font-mono truncate"
                         style={{ color: "var(--text-muted)" }}
                       >
+                        All Fleet
+                      </span>
+                    )}
+                    {assignedAcfts.length > 3 && (
+                      <span className="text-[9px] font-mono text-slate-400">
+                        +{assignedAcfts.length - 3}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Compact 3-Metric Hairline Strip */}
+                  <div
+                    className="grid grid-cols-3 rounded border overflow-hidden divide-x text-center"
+                    style={{
+                      backgroundColor: "var(--bg-app)",
+                      borderColor: "var(--border-default)",
+                    }}
+                  >
+                    <div className="py-1 px-1">
+                      <div className="text-[8.5px] uppercase" style={{ color: "var(--text-muted)" }}>
                         FTL28
                       </div>
                       <div
-                        className={`font-bold font-mono ${
+                        className={`font-bold font-mono tabular-nums text-[10.5px] ${
                           c.ftl28 > 85 ? "text-rose-500" : ""
                         }`}
-                        style={
-                          c.ftl28 > 85 ? {} : { color: "var(--text-primary)" }
-                        }
+                        style={c.ftl28 > 85 ? {} : { color: "var(--text-primary)" }}
                       >
-                        {c.ftl28}h
+                        {c.ftl28 || 0}h
                       </div>
                     </div>
-                    <div
-                      className="p-2 rounded text-center"
-                      style={{ backgroundColor: "var(--bg-app)" }}
-                    >
-                      <CrewMedicalIcon className="w-4 h-4 text-rose-500 mx-auto mb-1" />
-                      <div
-                        className="text-[10px]"
-                        style={{ color: "var(--text-muted)" }}
-                      >
-                        Medical
+                    <div className="py-1 px-1" style={{ borderColor: "var(--border-default)" }}>
+                      <div className="text-[8.5px] uppercase" style={{ color: "var(--text-muted)" }}>
+                        MED
                       </div>
                       <div
-                        className="font-mono text-[10px]"
-                        style={{ color: "var(--text-primary)" }}
+                        className={`font-mono tabular-nums text-[10px] font-bold ${
+                          medSt === "expired" || medSt === "critical" ? "text-rose-500" : ""
+                        }`}
+                        style={medSt === "expired" || medSt === "critical" ? {} : { color: "var(--text-primary)" }}
                       >
-                        {fmtDate(c.medicalExpiry).slice(5)}
+                        {c.medicalExpiry ? fmtDate(c.medicalExpiry).slice(5) : "—"}
                       </div>
                     </div>
-                    <div
-                      className="p-2 rounded text-center"
-                      style={{ backgroundColor: "var(--bg-app)" }}
-                    >
-                      <CrewLicenseIcon className="w-4 h-4 text-emerald-500 mx-auto mb-1" />
-                      <div
-                        className="text-[10px]"
-                        style={{ color: "var(--text-muted)" }}
-                      >
-                        License
+                    <div className="py-1 px-1" style={{ borderColor: "var(--border-default)" }}>
+                      <div className="text-[8.5px] uppercase" style={{ color: "var(--text-muted)" }}>
+                        LIC
                       </div>
                       <div
-                        className="font-mono text-[10px]"
-                        style={{ color: "var(--text-primary)" }}
+                        className={`font-mono tabular-nums text-[10px] font-bold ${
+                          licSt === "expired" || licSt === "critical" ? "text-rose-500" : ""
+                        }`}
+                        style={licSt === "expired" || licSt === "critical" ? {} : { color: "var(--text-primary)" }}
                       >
-                        {fmtDate(c.licenseExpiry).slice(5)}
+                        {c.licenseExpiry ? fmtDate(c.licenseExpiry).slice(5) : "—"}
                       </div>
                     </div>
                   </div>
                 </div>
 
+                {/* Single-Row Compact Actions */}
                 {hasAnyAction && (
                   <div
-                    className="space-y-1.5 pt-2 mt-2"
+                    className="flex items-center gap-1 pt-1.5"
                     style={{ borderTop: "1px solid var(--border-default)" }}
                   >
-                    <div className="grid grid-cols-3 gap-1.5">
-                      {canEdit && (
-                        <button
-                          onClick={() => openEdit(c)}
-                          className="py-2 rounded-lg bg-amber-500/15 text-amber-400 text-xs flex items-center justify-center gap-1 font-bold transition hover:bg-amber-500/25"
-                        >
-                          <CrewEditorIcon className="w-3.5 h-3.5" />{" "}
-                          {t.edit || "تعديل"}
-                        </button>
-                      )}
-                      {canDocsView && (
-                        <button
-                          onClick={() => openDocs(c)}
-                          className="relative py-2 rounded-lg bg-purple-500/15 text-purple-400 text-xs flex items-center justify-center gap-1 font-bold transition hover:bg-purple-500/25"
-                        >
-                          <Paperclip className="w-3.5 h-3.5" />
-                          {docsN > 0 && (
-                            <span className="absolute -top-1.5 -end-1.5 bg-purple-600 text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
-                              {docsN}
-                            </span>
-                          )}
-                        </button>
-                      )}
-                      {canCard && (
-                        <button
-                          onClick={() => downloadCard(c)}
-                          disabled={busyPdf === c.id}
-                          className="py-2 rounded-lg text-xs flex items-center justify-center gap-1 font-bold disabled:opacity-50 transition"
-                          style={{
-                            backgroundColor: "rgba(99, 102, 241, 0.15)",
-                            color: "var(--brand-primary)",
-                          }}
-                        >
-                          <CrewIDCardIcon className="w-3.5 h-3.5" /> ID
-                        </button>
-                      )}
-                    </div>
-                    <div className="flex gap-1.5">
-                      {canCreateUser && !isAlreadyUser(c) && (
-                        <button
-                          onClick={() => openCreateUser(c)}
-                          className="flex-1 py-1.5 rounded-lg bg-indigo-500/15 text-indigo-400 text-[10px] flex items-center justify-center gap-1 font-semibold transition hover:bg-indigo-500/25"
-                        >
-                          <UserPlus className="w-3 h-3" /> User
-                        </button>
-                      )}
-                      {canCreateUser && isAlreadyUser(c) && (
-                        <div className="flex-1 py-1.5 rounded-lg bg-emerald-500/15 text-emerald-400 text-[10px] flex items-center justify-center gap-1 font-bold">
-                          ✓ Account
-                        </div>
-                      )}
-                      {canDelete && (
-                        <button
-                          onClick={() => remove(c.id)}
-                          className="py-1.5 px-2 rounded-lg bg-rose-500/15 text-rose-400 text-xs transition hover:bg-rose-500/25"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                    </div>
+                    {canEdit && (
+                      <button
+                        type="button"
+                        onClick={() => openEdit(c)}
+                        className="flex-1 h-6 rounded bg-amber-500/12 text-amber-500 text-[10.5px] flex items-center justify-center gap-1 font-bold transition hover:bg-amber-500/20 cursor-pointer"
+                        title={t.edit || "تعديل"}
+                      >
+                        <CrewEditorIcon className="w-3 h-3" />
+                        <span className="truncate">{t.edit || "تعديل"}</span>
+                      </button>
+                    )}
+                    {canDocsView && (
+                      <button
+                        type="button"
+                        onClick={() => openDocs(c)}
+                        className="relative h-6 px-2 rounded bg-purple-500/12 text-purple-400 text-[10.5px] flex items-center justify-center gap-1 font-bold transition hover:bg-purple-500/20 cursor-pointer"
+                        title={t.attachments || "مستندات"}
+                      >
+                        <Paperclip className="w-3 h-3" />
+                        {docsN > 0 && (
+                          <span className="font-mono text-[9.5px] font-bold">{docsN}</span>
+                        )}
+                      </button>
+                    )}
+                    {canCard && (
+                      <button
+                        type="button"
+                        onClick={() => downloadCard(c)}
+                        disabled={busyPdf === c.id}
+                        className="h-6 px-2 rounded text-[10px] flex items-center justify-center gap-0.5 font-bold disabled:opacity-50 transition cursor-pointer"
+                        style={{
+                          backgroundColor: "rgba(99, 102, 241, 0.12)",
+                          color: "var(--brand-primary)",
+                        }}
+                        title="ID Card PDF"
+                      >
+                        <CrewIDCardIcon className="w-3 h-3" />
+                      </button>
+                    )}
+                    {canCreateUser && !isAlreadyUser(c) && (
+                      <button
+                        type="button"
+                        onClick={() => openCreateUser(c)}
+                        className="h-6 px-2 rounded bg-indigo-500/12 text-indigo-400 text-[10px] flex items-center justify-center font-semibold transition hover:bg-indigo-500/20 cursor-pointer"
+                        title="Create User Account"
+                      >
+                        <UserPlus className="w-3 h-3" />
+                      </button>
+                    )}
+                    {canCreateUser && isAlreadyUser(c) && (
+                      <span
+                        className="h-6 px-1.5 rounded bg-emerald-500/12 text-emerald-500 text-[10px] flex items-center justify-center font-bold"
+                        title="Has Account"
+                      >
+                        <Check className="w-3 h-3" />
+                      </span>
+                    )}
+                    {canDelete && (
+                      <button
+                        type="button"
+                        onClick={() => remove(c.id)}
+                        className="h-6 px-1.5 rounded bg-rose-500/12 text-rose-500 text-[10px] transition hover:bg-rose-500/20 cursor-pointer"
+                        title="حذف"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -1270,7 +1201,7 @@ export function Crew({
                 {[
                   { id: "name", label: t.fullName || "Full Name" },
                   { id: "role", label: t.role || "Role" },
-                  { id: "aircraft", label: `✈️ ${t.aircraft || "Aircraft"}` },
+                  { id: "aircraft", label: t.aircraft || "Aircraft" },
                   { id: "empNo", label: t.empNo || "Emp No" },
                   { id: "email", label: t.email || "Email" },
                   { id: "ftl28", label: "FTL28" },
@@ -2058,7 +1989,7 @@ export function Crew({
                           color: isSelected ? "#f59e0b" : "var(--text-primary)",
                         }}
                       >
-                        ✈️ {a.reg}
+                        <Plane className="w-3 h-3 inline me-1 text-sky-400" />{a.reg}
                       </div>
                       <div
                         className="text-[10px] truncate"
@@ -2125,7 +2056,10 @@ export function Crew({
                     key={reg}
                     className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-amber-500/20 text-amber-400 border border-amber-500/40 font-mono text-xs font-bold"
                   >
-                    <span>✈️ {reg}</span>
+                    <span className="inline-flex items-center gap-1">
+                      <Plane className="w-3 h-3 text-amber-400" />
+                      <span>{reg}</span>
+                    </span>
                     <button
                       type="button"
                       onClick={() => handleToggleAircraft(reg)}
@@ -2285,7 +2219,7 @@ export function Crew({
               }}
             >
               <div
-                className="w-12 h-12 rounded-full overflow-hidden flex-shrink-0"
+                className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0"
                 style={{
                   backgroundColor: "var(--bg-card)",
                   border: "1px solid var(--border-default)",
@@ -2299,7 +2233,7 @@ export function Crew({
                   />
                 ) : (
                   <User
-                    className="w-full h-full p-2"
+                    className="w-full h-full p-1.5"
                     style={{ color: "var(--text-muted)" }}
                   />
                 )}
@@ -2381,7 +2315,7 @@ export function Crew({
             }}
           >
             <div
-              className="w-12 h-12 rounded-full overflow-hidden flex-shrink-0"
+              className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0"
               style={{
                 backgroundColor: "var(--bg-card)",
                 border: "1px solid var(--border-default)",
@@ -2395,7 +2329,7 @@ export function Crew({
                 />
               ) : (
                 <User
-                  className="w-full h-full p-2"
+                  className="w-full h-full p-1.5"
                   style={{ color: "var(--text-muted)" }}
                 />
               )}
@@ -2439,11 +2373,11 @@ export function Crew({
                   setUserDraft({ ...userDraft, role: e.target.value })
                 }
               >
-                <option value="superAdmin">👑 Super Admin</option>
-                <option value="dispatcher">📋 Dispatcher</option>
-                <option value="captain">✈️ Captain</option>
-                <option value="camo">🔧 CAMO</option>
-                <option value="crewMember">👤 Crew Member</option>
+                <option value="superAdmin">Super Admin</option>
+                <option value="dispatcher">Dispatcher</option>
+                <option value="captain">Captain</option>
+                <option value="camo">CAMO</option>
+                <option value="crewMember">Crew Member</option>
               </Select>
             </Field>
           </div>
@@ -2528,12 +2462,12 @@ function ReadOnlyDocsList({ docs = [], canDownload = false }) {
             style={{ backgroundColor: cardBg, borderColor: cardBorder }}
           >
             <div
-              className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
+              className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
               style={{
                 backgroundColor: "rgba(168, 85, 247, 0.15)",
               }}
             >
-              <Paperclip className="w-5 h-5" style={{ color: "#a855f7" }} />
+              <Paperclip className="w-4 h-4" style={{ color: "#a855f7" }} />
             </div>
             <div className="flex-1 min-w-0">
               <div

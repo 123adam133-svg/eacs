@@ -40,6 +40,7 @@ export function PermissionsMatrix({ value, onChange, lang = "en" }) {
     const o = {};
     Object.keys(permissionsMap).forEach((k) => (o[k] = false));
     o.schedule = true;
+    o.portal = true;
     o.crew = true;
     o.quality = true;
     o.roster = true;

@@ -14,6 +14,7 @@ import {
   Smartphone,
   Copy,
   RefreshCw,
+  Star,
 } from "lucide-react";
 import { useT, useAuth } from "../contexts";
 import { Field } from "../components/ui/Field";
@@ -229,24 +230,24 @@ export function RolesModule({ roles, setRoles, setSyncStatus }) {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="w-full space-y-3">
       {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-3">
+      <div className="flex items-center justify-between flex-wrap gap-2.5 p-3 rounded-xl" style={{ backgroundColor: "var(--bg-card)", border: "1px solid var(--border-default)" }}>
+        <div className="flex items-center gap-2.5">
           <div
-            className="w-12 h-12 rounded-xl flex items-center justify-center shadow-md"
+            className="w-8 h-8 rounded-lg flex items-center justify-center shadow-xs shrink-0"
             style={{ background: "var(--brand-gradient)" }}
           >
-            <Key className="w-7 h-7 text-white" />
+            <Key className="w-4 h-4 text-white" />
           </div>
           <div>
             <h2
-              className="text-lg font-bold"
+              className="text-base font-bold leading-tight"
               style={{ color: "var(--text-primary)" }}
             >
               {t.roles || "Roles"}
             </h2>
-            <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+            <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>
               {roles.length} {t.totalRoles || "roles"} · {TOTAL_PERMS_COUNT}{" "}
               {lang === "ar" ? "صلاحية متاحة" : "permissions available"}
             </p>
@@ -256,19 +257,19 @@ export function RolesModule({ roles, setRoles, setSyncStatus }) {
         {canEdit && (
           <button
             onClick={openNew}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-white text-sm font-bold"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-white text-xs font-bold"
             style={{
               background: "var(--brand-gradient)",
-              boxShadow: "var(--shadow-md)",
+              boxShadow: "var(--shadow-sm)",
             }}
           >
-            <Plus className="w-4 h-4" /> {t.newRole || "New Role"}
+            <Plus className="w-3.5 h-3.5" /> {t.newRole || "New Role"}
           </button>
         )}
       </div>
 
       {/* Roles Grid */}
-      <div className="grid md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
         {roles.map((role) => {
           const isSuper = role.name === "superAdmin";
           const perms = stripInternalPermMarkers(
@@ -279,7 +280,7 @@ export function RolesModule({ roles, setRoles, setSyncStatus }) {
           return (
             <div
               key={role.id}
-              className="rounded-xl p-4 space-y-3"
+              className="rounded-xl p-3 space-y-2.5 flex flex-col justify-between"
               style={{
                 backgroundColor: "var(--bg-card)",
                 border: "1px solid var(--border-default)",
@@ -289,17 +290,17 @@ export function RolesModule({ roles, setRoles, setSyncStatus }) {
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-2">
                   <div
-                    className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                    className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
                       isSuper
                         ? "bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300"
                         : "bg-sky-100 dark:bg-sky-950 text-sky-700 dark:text-sky-300"
                     }`}
                   >
-                    <Key className="w-5 h-5" />
+                    <Key className="w-4 h-4" />
                   </div>
                   <div>
                     <div
-                      className="font-bold"
+                      className="text-sm font-bold leading-tight"
                       style={{ color: "var(--text-primary)" }}
                     >
                       {lang === "ar" ? role.nameAr : role.name}
@@ -319,8 +320,8 @@ export function RolesModule({ roles, setRoles, setSyncStatus }) {
               </div>
 
               {hasPortal && (
-                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950 border border-emerald-300 dark:border-emerald-800">
-                  <Smartphone className="w-3.5 h-3.5 text-emerald-600" />
+                <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950 border border-emerald-300 dark:border-emerald-800 w-fit">
+                  <Smartphone className="w-3 h-3 text-emerald-600" />
                   <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
                     {lang === "ar" ? "واجهة الطاقم مفعّلة" : "Crew Portal ON"}
                   </span>
@@ -329,8 +330,8 @@ export function RolesModule({ roles, setRoles, setSyncStatus }) {
 
               <div className="flex flex-wrap gap-1">
                 {perms.includes("*") ? (
-                  <span className="px-2 py-0.5 rounded bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300 text-[10px] font-bold">
-                    ⭐ {lang === "ar" ? "كل الصلاحيات" : "All permissions"}
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-rose-100 dark:bg-rose-950 text-rose-700 dark:text-rose-300 text-[10px] font-bold">
+                    <Star className="w-3 h-3" /> {lang === "ar" ? "كل الصلاحيات" : "All permissions"}
                   </span>
                 ) : (
                   perms
@@ -464,14 +465,15 @@ export function RolesModule({ roles, setRoles, setSyncStatus }) {
                     key={key}
                     type="button"
                     onClick={() => applyTemplate(key)}
-                    className="px-2.5 py-1 rounded text-xs font-bold transition"
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-bold transition"
                     style={{
                       backgroundColor: "var(--bg-card)",
                       color: "var(--text-primary)",
                       border: "1px solid var(--border-default)",
                     }}
                   >
-                    {tpl.icon} {lang === "ar" ? tpl.label_ar : tpl.label_en}
+                    <Key className="w-3 h-3 opacity-70" />
+                    <span>{lang === "ar" ? tpl.label_ar : tpl.label_en}</span>
                   </button>
                 ))}
               </div>
@@ -530,9 +532,9 @@ export function RolesModule({ roles, setRoles, setSyncStatus }) {
             }}
           >
             <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3 flex-1 min-w-0">
+              <div className="flex items-center gap-2.5 flex-1 min-w-0">
                 <div
-                  className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
+                  className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
                   style={{
                     backgroundColor: hasCrewPortal
                       ? "#10b981"
@@ -540,11 +542,11 @@ export function RolesModule({ roles, setRoles, setSyncStatus }) {
                     color: hasCrewPortal ? "white" : "var(--text-muted)",
                   }}
                 >
-                  <Smartphone className="w-6 h-6" />
+                  <Smartphone className="w-4 h-4" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <div
-                    className="font-bold"
+                    className="text-sm font-bold"
                     style={{ color: "var(--text-primary)" }}
                   >
                     {lang === "ar"
@@ -565,7 +567,7 @@ export function RolesModule({ roles, setRoles, setSyncStatus }) {
               <button
                 type="button"
                 onClick={toggleCrewPortal}
-                className="relative w-16 h-9 rounded-full transition-all flex-shrink-0"
+                className="relative w-11 h-6 rounded-full transition-all flex-shrink-0"
                 style={{
                   backgroundColor: hasCrewPortal
                     ? "#10b981"
@@ -573,11 +575,11 @@ export function RolesModule({ roles, setRoles, setSyncStatus }) {
                 }}
               >
                 <span
-                  className="absolute top-1 w-7 h-7 bg-white rounded-full shadow-md transition-transform"
+                  className="absolute top-0.5 left-0 w-5 h-5 bg-white rounded-full shadow-sm transition-transform"
                   style={{
                     transform: hasCrewPortal
-                      ? "translateX(32px)"
-                      : "translateX(4px)",
+                      ? "translateX(22px)"
+                      : "translateX(2px)",
                   }}
                 />
               </button>
@@ -656,11 +658,15 @@ export function RolesModule({ roles, setRoles, setSyncStatus }) {
                   border: "1px solid var(--border-default)",
                 }}
               >
-                {safeArray(draft.perms).includes("*")
-                  ? `⭐ ${lang === "ar" ? "كل الصلاحيات" : "All permissions"}`
-                  : lang === "ar"
-                  ? "منح الكل"
-                  : "Grant all"}
+                {safeArray(draft.perms).includes("*") ? (
+                  <span className="inline-flex items-center gap-1">
+                    <Star className="w-3 h-3" /> {lang === "ar" ? "كل الصلاحيات" : "All permissions"}
+                  </span>
+                ) : lang === "ar" ? (
+                  "منح الكل"
+                ) : (
+                  "Grant all"
+                )}
               </button>
             </div>
 
@@ -672,11 +678,12 @@ export function RolesModule({ roles, setRoles, setSyncStatus }) {
                   border: "2px solid #dc2626",
                 }}
               >
-                <Shield className="w-8 h-8 mx-auto mb-2 text-rose-600" />
-                <div className="text-sm font-bold text-rose-700 dark:text-rose-300">
+                <Shield className="w-7 h-7 mx-auto mb-1.5 text-rose-600" />
+                <div className="inline-flex items-center gap-1.5 text-sm font-bold text-rose-700 dark:text-rose-300">
+                  <Star className="w-4 h-4" />
                   {lang === "ar"
-                    ? "⭐ كل الصلاحيات ممنوحة"
-                    : "⭐ All permissions granted"}
+                    ? "كل الصلاحيات ممنوحة"
+                    : "All permissions granted"}
                 </div>
               </div>
             ) : (

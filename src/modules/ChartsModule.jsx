@@ -533,17 +533,17 @@ export function ChartsModule({
     <div className="space-y-3">
       {!embedded && (
         <div
-          className="rounded-xl p-4 text-white shadow-sm"
+          className="rounded-xl p-3 text-white shadow-sm"
           style={{ background: "var(--brand-gradient)" }}
         >
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="w-11 h-11 bg-white/20 rounded-xl flex items-center justify-center">
-                <BarChart3 className="w-6 h-6" />
+          <div className="flex flex-wrap items-center justify-between gap-2.5">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center shrink-0">
+                <BarChart3 className="w-4 h-4" />
               </div>
               <div>
-                <h2 className="text-lg font-bold">{t.chartsTitle}</h2>
-                <div className="text-xs text-white/80 font-mono tabular-nums">
+                <h2 className="text-base font-bold leading-tight">{t.chartsTitle}</h2>
+                <div className="text-[11px] text-white/80 font-mono tabular-nums">
                   {t.interactiveCharts} · {period} days
                 </div>
               </div>

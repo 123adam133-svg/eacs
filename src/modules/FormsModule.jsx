@@ -124,6 +124,7 @@ export function FormsModule({
   const canCreate = checkPerm(user, "forms.create");
   const canEdit = checkPerm(user, "forms.edit");
   const canDelete = checkPerm(user, "forms.delete");
+  const canAiScanner = checkPerm(user, "forms.ai_scanner");
 
   useEffect(() => {
     let mounted = true;
@@ -224,6 +225,182 @@ export function FormsModule({
     );
   };
 
+  const [aiParsingDraft, setAiParsingDraft] = useState(false);
+
+  const convertImgDataUrlToPdf = async (imageDataUrl) => {
+    const { PDFDocument } = await import("pdf-lib");
+    const pngBytes = await new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const canvas = document.createElement("canvas");
+          canvas.width = img.naturalWidth || img.width || 1240;
+          canvas.height = img.naturalHeight || img.height || 1754;
+          const ctx = canvas.getContext("2d");
+          ctx.fillStyle = "#ffffff";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0);
+          const pngData = canvas.toDataURL("image/png");
+          const b64 = pngData.split(",")[1];
+          const bin = atob(b64);
+          const u8 = new Uint8Array(bin.length);
+          for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+          resolve({ u8, width: canvas.width, height: canvas.height });
+        } catch (err) {
+          reject(err);
+        }
+      };
+      img.onerror = () => reject(new Error("تعذر قراءة ملف الصورة"));
+      img.src = imageDataUrl;
+    });
+
+    const pdfDoc = await PDFDocument.create();
+    const page = pdfDoc.addPage([595, 842]);
+    const embedded = await pdfDoc.embedPng(pngBytes.u8);
+    const scale = Math.min(595 / pngBytes.width, 842 / pngBytes.height);
+    const drawW = pngBytes.width * scale;
+    const drawH = pngBytes.height * scale;
+    page.drawImage(embedded, {
+      x: (595 - drawW) / 2,
+      y: (842 - drawH) / 2,
+      width: drawW,
+      height: drawH,
+    });
+    const pdfBytes = await pdfDoc.save();
+    let binary = "";
+    const chunk = 0x8000;
+    for (let i = 0; i < pdfBytes.length; i += chunk) {
+      binary += String.fromCharCode.apply(null, pdfBytes.subarray(i, i + chunk));
+    }
+    return {
+      dataUrl: `data:application/pdf;base64,${btoa(binary)}`,
+      bytes: pdfBytes,
+    };
+  };
+
+  const runAiRecognizeOnSource = async ({
+    fileDataUrl,
+    mimeType,
+    fileName,
+    htmlContent,
+  }) => {
+    setAiParsingDraft(true);
+    try {
+      const resp = await fetch("/api/ai/parse-form", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fileDataUrl,
+          mimeType,
+          fileName,
+          htmlContent,
+          mode: "form",
+          flightContext: {},
+        }),
+      });
+      const data = await resp.json();
+      if (!resp.ok || !data?.ok) {
+        throw new Error(data?.error || "فشل التعرف بالذكاء الاصطناعي");
+      }
+      const catalogSet = new Set(SYSTEM_DATA_CATALOG.map((c) => c.key));
+      const aiFields = (data.fields || []).map((f, idx) => {
+        const matched =
+          (f.systemKey && catalogSet.has(f.systemKey) ? f.systemKey : "") ||
+          matchLabelOrTokenToSystemKey(f.key || f.label || f.rawLabel || "") ||
+          "";
+        const cat = SYSTEM_DATA_CATALOG.find((c) => c.key === matched);
+        const safeKey =
+          matched ||
+          String(f.key || `ai_field_${idx + 1}`)
+            .replace(/[^a-zA-Z0-9_]/g, "_")
+            .slice(0, 32);
+        return {
+          key: safeKey,
+          systemKey: matched,
+          label: cat ? cat.label : f.label || f.rawLabel || safeKey,
+          rawLabel: f.rawLabel || f.label || safeKey,
+          auto: Boolean(matched),
+          x: typeof f.x === "number" ? Math.max(0.03, Math.min(0.92, f.x)) : undefined,
+          y: typeof f.y === "number" ? Math.max(0.03, Math.min(0.95, f.y)) : undefined,
+          page: typeof f.page === "number" ? f.page : 1,
+          fontSize: typeof f.fontSize === "number" ? f.fontSize : 10,
+          sourceType: "ai_ocr",
+        };
+      });
+
+      setDraft((prev) => ({
+        ...prev,
+        name: prev.name || data.title || (fileName || "").replace(/\.[^/.]+$/, ""),
+        category:
+          prev.category && prev.category !== "Ground Ops"
+            ? prev.category
+            : data.category && FORM_CATEGORIES.includes(data.category)
+            ? data.category
+            : prev.category || "Ground Ops",
+        htmlContent:
+          prev.format === "html" && !prev.htmlContent && data.htmlTemplate
+            ? data.htmlTemplate
+            : prev.htmlContent,
+        fields: mergeDiscoveredFields(prev.fields, aiFields),
+      }));
+
+      const autoCount = aiFields.filter((f) => f.auto).length;
+      showToast(
+        `✨ تم التعرف الذكي على ${aiFields.length} حقل (${autoCount} حقل مربوط بمعلومات النظام تلقائياً)`,
+        "success"
+      );
+    } catch (err) {
+      showToast("⚠️ تعذر التعرف الذكي: " + err.message, "warning");
+    } finally {
+      setAiParsingDraft(false);
+    }
+  };
+
+  const handleAiRecognizeDraft = async () => {
+    if (draft.format === "html" && String(draft.htmlContent || "").trim()) {
+      await runAiRecognizeOnSource({
+        mimeType: "text/html",
+        fileName: `${draft.name || "form"}.html`,
+        htmlContent: draft.htmlContent,
+      });
+      return;
+    }
+    const att = Array.isArray(draft.attachments) ? draft.attachments[0] : null;
+    if (!att) {
+      return showToast("⚠️ ارفع صورة أو ملف PDF أو ألصق HTML أولاً للتعرف بالذكاء الاصطناعي", "warning");
+    }
+    const srcUrl = att.originalImageUrl || att.url;
+    if (srcUrl && String(srcUrl).startsWith("data:")) {
+      await runAiRecognizeOnSource({
+        fileDataUrl: srcUrl,
+        mimeType: att.originalMimeType || att.type || "application/pdf",
+        fileName: att.name || "form.pdf",
+      });
+      return;
+    }
+    if (srcUrl) {
+      try {
+        setAiParsingDraft(true);
+        const res = await fetch(srcUrl);
+        const blob = await res.blob();
+        const dataUrl = await new Promise((resolve, reject) => {
+          const r = new FileReader();
+          r.onload = () => resolve(r.result);
+          r.onerror = () => reject(new Error("تعذر قراءة الملف"));
+          r.readAsDataURL(blob);
+        });
+        await runAiRecognizeOnSource({
+          fileDataUrl: dataUrl,
+          mimeType: blob.type || att.type || "application/pdf",
+          fileName: att.name || "form.pdf",
+        });
+      } catch (err) {
+        setAiParsingDraft(false);
+        showToast("⚠️ تعذر قراءة الملف المرفق للتحليل: " + err.message, "warning");
+      }
+    }
+  };
+
   const handleFileUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -233,6 +410,9 @@ export function FormsModule({
 
     const isHtml =
       file.type === "text/html" || /\.html?$/i.test(file.name || "");
+    const isImage =
+      String(file.type || "").startsWith("image/") ||
+      /\.(png|jpe?g|webp|bmp)$/i.test(file.name || "");
 
     if (isHtml) {
       setUploadingFile(true);
@@ -276,7 +456,7 @@ export function FormsModule({
           fields: mergeDiscoveredFields(prev.fields, recognized),
         }));
         showToast(
-          `✅ تم رفع ملف HTML في Google Drive واكتشاف ${recognized.length} حقل تلقائياً`,
+          `✅ تم رفع ملف HTML واكتشاف ${recognized.length} حقل تلقائياً`,
           "success"
         );
       } catch (err) {
@@ -288,15 +468,75 @@ export function FormsModule({
       return;
     }
 
+    if (isImage) {
+      setUploadingFile(true);
+      try {
+        const imgDataUrl = await new Promise((resolve, reject) => {
+          const r = new FileReader();
+          r.onload = () => resolve(r.result);
+          r.onerror = () => reject(new Error("تعذر قراءة الصورة"));
+          r.readAsDataURL(file);
+        });
+        const converted = await convertImgDataUrlToPdf(imgDataUrl);
+        const pdfFileName = `${(file.name || "form").replace(/\.[^/.]+$/, "")}.pdf`;
+        const pdfFileObj = new File([converted.bytes], pdfFileName, {
+          type: "application/pdf",
+        });
+        let driveMeta = null;
+        try {
+          driveMeta = await uploadFile(pdfFileObj, "operational-forms");
+        } catch (upErr) {
+          console.warn("Image->PDF Drive upload fallback:", upErr?.message);
+        }
+
+        const newAtt = {
+          name: pdfFileName,
+          url: driveMeta?.fileUrl || converted.dataUrl,
+          originalImageUrl: imgDataUrl,
+          originalMimeType: file.type || "image/png",
+          size: driveMeta?.size || converted.bytes.length,
+          type: "application/pdf",
+        };
+
+        setDraft((prev) => ({
+          ...prev,
+          name: prev.name || file.name.replace(/\.[^/.]+$/, ""),
+          format: "pdf",
+          attachments: [newAtt],
+        }));
+
+        await runAiRecognizeOnSource({
+          fileDataUrl: imgDataUrl,
+          mimeType: file.type || "image/png",
+          fileName: file.name,
+        });
+      } catch (err) {
+        showToast("❌ فشل معالجة صورة النموذج: " + err.message, "error");
+      } finally {
+        setUploadingFile(false);
+        e.target.value = "";
+      }
+      return;
+    }
+
     // PDF Upload
     setUploadingFile(true);
     try {
-      const result = await uploadFile(file, "operational-forms");
+      const pdfDataUrl = await new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(r.result);
+        r.onerror = () => reject(new Error("تعذر قراءة PDF"));
+        r.readAsDataURL(file);
+      });
+      let result = null;
+      try {
+        result = await uploadFile(file, "operational-forms");
+      } catch {}
       const newAtt = {
         name: file.name,
-        url: result.fileUrl,
-        size: result.size || file.size,
-        type: file.type || result.mimeType || "application/pdf",
+        url: result?.fileUrl || pdfDataUrl,
+        size: result?.size || file.size,
+        type: file.type || result?.mimeType || "application/pdf",
       };
 
       let discovered = [];
@@ -328,10 +568,11 @@ export function FormsModule({
           "success"
         );
       } else {
-        showToast(
-          "✅ تم رفع ملف PDF — اضغط (تحديد مواضع الحقول على PDF) لربط مواقع الكتابة بالنظام",
-          "success"
-        );
+        await runAiRecognizeOnSource({
+          fileDataUrl: pdfDataUrl,
+          mimeType: "application/pdf",
+          fileName: file.name,
+        });
       }
     } catch (err) {
       showToast("❌ فشل رفع الملف: " + err.message, "error");
@@ -611,15 +852,17 @@ export function FormsModule({
               </div>
 
               <div className="flex items-center gap-2 flex-wrap">
-                <button
-                  onClick={() => setShowAiScanner(true)}
-                  className="px-4 py-2 rounded-lg text-sm font-bold text-white flex items-center gap-2 shadow-sm whitespace-nowrap shrink-0 transition hover:opacity-95"
-                  style={{ background: "linear-gradient(135deg, #059669, #0284c7)" }}
-                  title="إيداع صورة أو ملف PDF أو HTML والتعرف التلقائي على الحقول وتعبئتها من الرحلة"
-                >
-                  <Sparkles className="w-4 h-4 text-amber-300" />
-                  التعرف الذكي على النماذج (AI OCR)
-                </button>
+                {canAiScanner && (
+                  <button
+                    onClick={() => setShowAiScanner(true)}
+                    className="px-4 py-2 rounded-lg text-sm font-bold text-white flex items-center gap-2 shadow-sm whitespace-nowrap shrink-0 transition hover:opacity-95"
+                    style={{ background: "linear-gradient(135deg, #059669, #0284c7)" }}
+                    title="إيداع صورة أو ملف PDF أو HTML والتعرف التلقائي على الحقول وتعبئتها من الرحلة"
+                  >
+                    <Sparkles className="w-4 h-4 text-amber-300" />
+                    التعرف الذكي على النماذج (AI OCR)
+                  </button>
+                )}
                 {canCreate && (
                   <button
                     onClick={openNewForm}
@@ -662,16 +905,18 @@ export function FormsModule({
             </div>
 
             <div className="flex items-center gap-2 flex-wrap shrink-0">
-              <button
-                type="button"
-                onClick={() => setShowAiScanner(true)}
-                className="px-3.5 py-2 rounded-lg text-xs sm:text-sm font-bold text-white flex items-center gap-1.5 shadow-sm whitespace-nowrap shrink-0 transition hover:opacity-95"
-                style={{ background: "linear-gradient(135deg, #059669, #0284c7)" }}
-                title="إيداع صورة أو ملف PDF أو HTML والتعرف التلقائي على الحقول وتعبئتها من الرحلة"
-              >
-                <Sparkles className="w-4 h-4 text-amber-300" />
-                التعرف الذكي (AI OCR)
-              </button>
+              {canAiScanner && (
+                <button
+                  type="button"
+                  onClick={() => setShowAiScanner(true)}
+                  className="px-3.5 py-2 rounded-lg text-xs sm:text-sm font-bold text-white flex items-center gap-1.5 shadow-sm whitespace-nowrap shrink-0 transition hover:opacity-95"
+                  style={{ background: "linear-gradient(135deg, #059669, #0284c7)" }}
+                  title="إيداع صورة أو ملف PDF أو HTML والتعرف التلقائي على الحقول وتعبئتها من الرحلة"
+                >
+                  <Sparkles className="w-4 h-4 text-amber-300" />
+                  التعرف الذكي (AI OCR)
+                </button>
+              )}
               {canCreate && (
                 <button
                   type="button"
@@ -960,22 +1205,37 @@ export function FormsModule({
                 style={{ color: "var(--text-primary)" }}
               >
                 <Code2 className="w-4 h-4 text-purple-500" />
-                2. إدراج النموذج المعمول به (رفع ملف HTML أو PDF أو لصق الكود)
+                2. إدراج النموذج (صورة أو ملف PDF أو HTML)
               </h4>
 
-              <label className="px-3.5 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0">
-                <Upload className="w-3.5 h-3.5" />
-                {uploadingFile
-                  ? "جاري الرفع والفحص..."
-                  : "رفع ملف نموذج (.html / .pdf)"}
-                <input
-                  type="file"
-                  accept=".html,.htm,text/html,application/pdf"
-                  disabled={uploadingFile}
-                  onChange={handleFileUpload}
-                  className="hidden"
-                />
-              </label>
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  disabled={aiParsingDraft || uploadingFile}
+                  onClick={handleAiRecognizeDraft}
+                  className="px-3.5 py-1.5 rounded-lg text-white text-xs font-bold flex items-center gap-1.5 shadow-xs whitespace-nowrap shrink-0 transition disabled:opacity-50"
+                  style={{ background: "linear-gradient(135deg, #059669, #0284c7)" }}
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                  {aiParsingDraft
+                    ? "جاري التحليل بالذكاء الاصطناعي..."
+                    : "التعرف بالذكاء الاصطناعي (AI)"}
+                </button>
+
+                <label className="px-3.5 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer whitespace-nowrap shrink-0">
+                  <Upload className="w-3.5 h-3.5" />
+                  {uploadingFile
+                    ? "جاري الرفع والفحص..."
+                    : "رفع ملف (.pdf / صورة / .html)"}
+                  <input
+                    type="file"
+                    accept=".html,.htm,text/html,application/pdf,image/png,image/jpeg,image/webp,image/*"
+                    disabled={uploadingFile}
+                    onChange={handleFileUpload}
+                    className="hidden"
+                  />
+                </label>
+              </div>
             </div>
 
             {draft.format === "pdf" ? (
@@ -1030,7 +1290,7 @@ export function FormsModule({
                       color: "var(--text-muted)",
                     }}
                   >
-                    اضغط زر "رفع ملف نموذج (.html / .pdf)" أعلاه لإدراج ملف PDF المعمول به
+                    اضغط زر "رفع ملف (.pdf / صورة / .html)" أعلاه لإدراج ملف PDF أو صورة للنموذج وسيتم التعرف على الحقول بالذكاء الاصطناعي تلقائياً
                   </div>
                 )}
               </div>
@@ -1446,6 +1706,7 @@ export function FormsModule({
           mode="form"
           flights={flights}
           fleet={fleet}
+          camoList={camoList}
           crew={crew}
           settings={settings}
           user={user}

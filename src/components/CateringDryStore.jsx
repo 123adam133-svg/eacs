@@ -594,8 +594,8 @@ export function CateringDryStore({ flights = [], settings = {}, user }) {
               {totalUnits} وحدة مخزنة
             </div>
           </div>
-          <div className="w-10 h-10 rounded-lg bg-sky-500/10 flex items-center justify-center text-sky-500">
-            <Package className="w-5 h-5" />
+          <div className="w-8 h-8 rounded-lg bg-sky-500/10 flex items-center justify-center text-sky-500 shrink-0">
+            <Package className="w-4 h-4" />
           </div>
         </div>
 
@@ -627,13 +627,13 @@ export function CateringDryStore({ flights = [], settings = {}, user }) {
             </div>
           </div>
           <div
-            className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+            className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
               lowStockItems.length > 0
                 ? "bg-amber-500/20 text-amber-500 animate-pulse"
                 : "bg-emerald-500/10 text-emerald-500"
             }`}
           >
-            <AlertTriangle className="w-5 h-5" />
+            <AlertTriangle className="w-4 h-4" />
           </div>
         </div>
 
@@ -655,8 +655,8 @@ export function CateringDryStore({ flights = [], settings = {}, user }) {
               توريد واستلام مخزني
             </div>
           </div>
-          <div className="w-10 h-10 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-500">
-            <ArrowDownLeft className="w-5 h-5" />
+          <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-500 shrink-0">
+            <ArrowDownLeft className="w-4 h-4" />
           </div>
         </div>
 
@@ -678,8 +678,8 @@ export function CateringDryStore({ flights = [], settings = {}, user }) {
               صرف لطواقم الطائرات
             </div>
           </div>
-          <div className="w-10 h-10 rounded-lg bg-rose-500/10 flex items-center justify-center text-rose-500">
-            <ArrowUpRight className="w-5 h-5" />
+          <div className="w-8 h-8 rounded-lg bg-rose-500/10 flex items-center justify-center text-rose-500 shrink-0">
+            <ArrowUpRight className="w-4 h-4" />
           </div>
         </div>
       </div>

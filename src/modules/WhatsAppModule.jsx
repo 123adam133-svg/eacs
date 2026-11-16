@@ -9,21 +9,30 @@ import {
   Users,
   AlertCircle,
   CheckCircle2,
+  XCircle,
   Smartphone,
   Zap,
   Clock,
   History,
   Lock,
+  Calendar,
+  Plane,
+  Bell,
+  HeartPulse,
+  GraduationCap,
+  Edit3,
+  BarChart3,
+  HelpCircle,
 } from "lucide-react";
 import { useT, useAuth } from "../contexts";
 import { can as checkPerm } from "../config/permissions";
-import { API_URL } from "../api";
+import { sendWhatsAppMessage } from "../utils/whatsapp";
 
 /* ⭐ Templates */
 const TEMPLATES = [
   {
     id: "roster",
-    icon: "📅",
+    Icon: Calendar,
     label_en: "Roster Notification",
     label_ar: "إشعار الجدول",
     category: "Operations",
@@ -31,7 +40,7 @@ const TEMPLATES = [
   },
   {
     id: "flight_change",
-    icon: "✈️",
+    Icon: Plane,
     label_en: "Flight Change",
     label_ar: "تغيير رحلة",
     category: "Operations",
@@ -39,7 +48,7 @@ const TEMPLATES = [
   },
   {
     id: "standby_alert",
-    icon: "⏰",
+    Icon: Clock,
     label_en: "Standby Alert",
     label_ar: "تنبيه احتياطي",
     category: "Operations",
@@ -47,7 +56,7 @@ const TEMPLATES = [
   },
   {
     id: "reminder",
-    icon: "🔔",
+    Icon: Bell,
     label_en: "Duty Reminder",
     label_ar: "تذكير واجب",
     category: "Operations",
@@ -55,7 +64,7 @@ const TEMPLATES = [
   },
   {
     id: "medical",
-    icon: "🩺",
+    Icon: HeartPulse,
     label_en: "Medical Expiry",
     label_ar: "انتهاء طبي",
     category: "Compliance",
@@ -63,7 +72,7 @@ const TEMPLATES = [
   },
   {
     id: "training",
-    icon: "🎓",
+    Icon: GraduationCap,
     label_en: "Training Due",
     label_ar: "تدريب مستحق",
     category: "Compliance",
@@ -71,7 +80,7 @@ const TEMPLATES = [
   },
   {
     id: "leave_approved",
-    icon: "✅",
+    Icon: CheckCircle2,
     label_en: "Leave Approved",
     label_ar: "موافقة إجازة",
     category: "HR",
@@ -79,7 +88,7 @@ const TEMPLATES = [
   },
   {
     id: "custom",
-    icon: "✍️",
+    Icon: Edit3,
     label_en: "Custom Message",
     label_ar: "رسالة مخصصة",
     category: "Custom",
@@ -89,24 +98,24 @@ const TEMPLATES = [
 
 /* ⭐ Bot Commands */
 const COMMANDS = [
-  { cmd: "STATUS", desc_en: "Today status", desc_ar: "حالة اليوم", icon: "📊" },
+  { cmd: "STATUS", desc_en: "Today status", desc_ar: "حالة اليوم", Icon: BarChart3 },
   {
     cmd: "ROSTER",
     desc_en: "Weekly roster",
     desc_ar: "جدول الأسبوع",
-    icon: "📅",
+    Icon: Calendar,
   },
   {
     cmd: "STANDBY",
     desc_en: "Next standby",
     desc_ar: "الاحتياطي القادم",
-    icon: "⏰",
+    Icon: Clock,
   },
   {
     cmd: "HELP",
     desc_en: "Command list",
     desc_ar: "قائمة الأوامر",
-    icon: "❓",
+    Icon: HelpCircle,
   },
 ];
 
@@ -193,21 +202,7 @@ export function WhatsAppModule({ crew = [], users = [], setSyncStatus }) {
       const finalMessage = message.replace(/{name}/g, member.fullName);
 
       try {
-        const res = await fetch(API_URL, {
-          method: "POST",
-          body:
-            "payload=" +
-            encodeURIComponent(
-              JSON.stringify({
-                action: "sendWhatsApp",
-                to: member.phone,
-                message: finalMessage,
-              })
-            ),
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        });
-        const data = await res.json();
-        if (!data.ok) throw new Error(data.error || "Send failed");
+        await sendWhatsAppMessage(member.phone, finalMessage);
         results.push({ crewId, ok: true, name: member.fullName });
       } catch (e) {
         results.push({
@@ -224,7 +219,7 @@ export function WhatsAppModule({ crew = [], users = [], setSyncStatus }) {
 
     setResult({
       ok: failCount === 0,
-      message: `✅ ${t.sent}: ${successCount} · ❌ ${t.failed}: ${failCount}`,
+      message: `${t.sent}: ${successCount} · ${t.failed}: ${failCount}`,
       details: results,
     });
 
@@ -260,16 +255,16 @@ export function WhatsAppModule({ crew = [], users = [], setSyncStatus }) {
 
   return (
     <div className="space-y-3">
-      {/* ═══ Header ═══ */}
-      <div className="bg-gradient-to-r from-green-600 to-emerald-700 rounded-xl p-4 text-white shadow-lg">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-white/20 rounded-lg flex items-center justify-center">
-              <MessageCircle className="w-7 h-7" />
+      {/* ═══ Compact Header ═══ */}
+      <div className="bg-gradient-to-r from-green-600 to-emerald-700 rounded-xl px-3.5 py-2.5 text-white shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-2.5">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center">
+              <MessageCircle className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="text-xl font-bold">{t.whatsappTitle}</h2>
-              <div className="text-xs text-green-100">
+              <h2 className="text-sm font-bold">{t.whatsappTitle}</h2>
+              <div className="text-[11px] text-green-100">
                 {t.whatsappNotifications}
               </div>
             </div>
@@ -294,10 +289,10 @@ export function WhatsAppModule({ crew = [], users = [], setSyncStatus }) {
       </div>
 
       {/* ═══ Setup Warning ═══ */}
-      <div className="bg-amber-50 dark:bg-amber-950 border-2 border-amber-300 dark:border-amber-800 rounded-xl p-3 flex items-start gap-3">
-        <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+      <div className="bg-amber-50 dark:bg-amber-950 border border-amber-300 dark:border-amber-800 rounded-xl p-2.5 flex items-start gap-2.5">
+        <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
         <div className="text-xs text-amber-800 dark:text-amber-200">
-          <b>⚠️ {t.whatsappSetup}:</b> {t.whatsappSetupInfo}
+          <b>{t.whatsappSetup}:</b> {t.whatsappSetupInfo}
           <br />
           <b>Sandbox:</b> {t.sandboxHint}
         </div>
@@ -427,23 +422,26 @@ export function WhatsAppModule({ crew = [], users = [], setSyncStatus }) {
                 </button>
               ))}
             </div>
-            <div className="grid grid-cols-2 gap-1 mt-2">
-              {filteredTemplates.map((tmp) => (
-                <button
-                  key={tmp.id}
-                  onClick={() => applyTemplate(tmp.id)}
-                  className={`p-2 rounded border text-[10px] font-bold text-start ${
-                    selectedTemplate === tmp.id
-                      ? "bg-green-100 dark:bg-green-950 border-green-400 text-green-800 dark:text-green-200"
-                      : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300"
-                  }`}
-                >
-                  <div className="text-lg leading-none">{tmp.icon}</div>
-                  <div className="truncate mt-1">
-                    {lang === "ar" ? tmp.label_ar : tmp.label_en}
-                  </div>
-                </button>
-              ))}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 mt-2">
+              {filteredTemplates.map((tmp) => {
+                const TmpIcon = tmp.Icon || MessageCircle;
+                return (
+                  <button
+                    key={tmp.id}
+                    onClick={() => applyTemplate(tmp.id)}
+                    className={`p-2 rounded-lg border text-[11px] font-bold text-start flex items-center gap-1.5 transition ${
+                      selectedTemplate === tmp.id
+                        ? "bg-green-100 dark:bg-green-950 border-green-400 text-green-800 dark:text-green-200"
+                        : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300"
+                    }`}
+                  >
+                    <TmpIcon className="w-3.5 h-3.5 shrink-0 text-green-600" />
+                    <span className="truncate">
+                      {lang === "ar" ? tmp.label_ar : tmp.label_en}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -512,11 +510,16 @@ export function WhatsAppModule({ crew = [], users = [], setSyncStatus }) {
                 {result.message}
               </div>
               {result.details && (
-                <div className="mt-2 max-h-32 overflow-auto">
+                <div className="mt-2 max-h-32 overflow-auto space-y-0.5">
                   {result.details.map((d, i) => (
-                    <div key={i} className="text-[10px] py-0.5">
-                      {d.ok ? "✅" : "❌"} {d.name}{" "}
-                      {d.error ? `— ${d.error}` : ""}
+                    <div key={i} className="text-[11px] flex items-center gap-1.5">
+                      {d.ok ? (
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                      ) : (
+                        <XCircle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                      )}
+                      <span>{d.name}</span>
+                      {d.error && <span className="text-slate-500">— {d.error}</span>}
                     </div>
                   ))}
                 </div>
@@ -528,34 +531,37 @@ export function WhatsAppModule({ crew = [], users = [], setSyncStatus }) {
         {/* ═══ RIGHT: Info ═══ */}
         <div className="space-y-3">
           {/* Bot Commands */}
-          <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
-            <h3 className="font-bold text-sm flex items-center gap-2 mb-3 text-slate-800 dark:text-slate-100">
+          <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-3.5">
+            <h3 className="font-bold text-sm flex items-center gap-2 mb-2 text-slate-800 dark:text-slate-100">
               <Zap className="w-4 h-4 text-amber-500" /> {t.botCommands}
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">
               {t.botCommandsDesc}
             </p>
-            <div className="space-y-1">
-              {COMMANDS.map((cmd) => (
-                <div
-                  key={cmd.cmd}
-                  className="flex items-center gap-2 p-2 rounded bg-slate-50 dark:bg-slate-900 text-xs"
-                >
-                  <span className="text-lg">{cmd.icon}</span>
-                  <code className="font-bold text-slate-800 dark:text-slate-100 bg-white dark:bg-slate-800 px-1.5 py-0.5 rounded">
-                    {cmd.cmd}
-                  </code>
-                  <span className="text-slate-600 dark:text-slate-400 flex-1">
-                    {lang === "ar" ? cmd.desc_ar : cmd.desc_en}
-                  </span>
-                </div>
-              ))}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+              {COMMANDS.map((cmd) => {
+                const CmdIcon = cmd.Icon || Zap;
+                return (
+                  <div
+                    key={cmd.cmd}
+                    className="flex items-center gap-2 p-2 rounded-lg bg-slate-50 dark:bg-slate-900 text-xs"
+                  >
+                    <CmdIcon className="w-3.5 h-3.5 text-green-600 shrink-0" />
+                    <code className="font-bold text-slate-800 dark:text-slate-100 bg-white dark:bg-slate-800 px-1.5 py-0.5 rounded font-mono text-[11px]">
+                      {cmd.cmd}
+                    </code>
+                    <span className="text-slate-600 dark:text-slate-400 flex-1 truncate">
+                      {lang === "ar" ? cmd.desc_ar : cmd.desc_en}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
           {/* History */}
-          <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
-            <h3 className="font-bold text-sm flex items-center gap-2 mb-3 text-slate-800 dark:text-slate-100">
+          <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-3.5">
+            <h3 className="font-bold text-sm flex items-center gap-2 mb-2 text-slate-800 dark:text-slate-100">
               <History className="w-4 h-4 text-slate-500" /> {t.recentSends} (
               {sendHistory.length})
             </h3>
@@ -564,23 +570,23 @@ export function WhatsAppModule({ crew = [], users = [], setSyncStatus }) {
                 {t.noMessagesSent}
               </div>
             ) : (
-              <div className="space-y-2 max-h-64 overflow-auto">
+              <div className="space-y-1.5 max-h-64 overflow-auto">
                 {sendHistory.map((h) => (
                   <div
                     key={h.id}
-                    className="p-2 rounded bg-slate-50 dark:bg-slate-900 text-xs border border-slate-200 dark:border-slate-700"
+                    className="p-2 rounded-lg bg-slate-50 dark:bg-slate-900 text-xs border border-slate-200 dark:border-slate-700"
                   >
                     <div className="flex justify-between text-[10px] text-slate-500 dark:text-slate-400 mb-1">
                       <span>{new Date(h.timestamp).toLocaleString()}</span>
-                      <span className="font-bold">
+                      <span className="font-bold flex items-center gap-2 tabular-nums">
                         {h.success > 0 && (
-                          <span className="text-emerald-600">
-                            ✅ {h.success}
+                          <span className="text-emerald-600 inline-flex items-center gap-0.5">
+                            <CheckCircle2 className="w-3 h-3" /> {h.success}
                           </span>
                         )}
                         {h.failed > 0 && (
-                          <span className="text-rose-600 ms-2">
-                            ❌ {h.failed}
+                          <span className="text-rose-600 inline-flex items-center gap-0.5">
+                            <XCircle className="w-3 h-3" /> {h.failed}
                           </span>
                         )}
                       </span>

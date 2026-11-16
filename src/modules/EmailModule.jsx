@@ -24,6 +24,12 @@ import {
   Server,
   ShieldCheck,
   X,
+  Calendar,
+  Plane,
+  Bell,
+  Activity,
+  GraduationCap,
+  FileText,
 } from "lucide-react";
 import { useT, useAuth } from "../contexts";
 import { can as checkPerm } from "../config/permissions";
@@ -40,7 +46,7 @@ import {
 const TEMPLATES = [
   {
     id: "roster",
-    icon: "📅",
+    Icon: Calendar,
     label_en: "Roster Notification",
     label_ar: "إشعار الجدول",
     category: "Operations",
@@ -50,7 +56,7 @@ const TEMPLATES = [
   },
   {
     id: "flight_change",
-    icon: "✈️",
+    Icon: Plane,
     label_en: "Flight Change",
     label_ar: "تغيير رحلة",
     category: "Operations",
@@ -60,7 +66,7 @@ const TEMPLATES = [
   },
   {
     id: "standby_alert",
-    icon: "⏰",
+    Icon: Clock,
     label_en: "Standby Alert",
     label_ar: "تنبيه احتياطي",
     category: "Operations",
@@ -70,7 +76,7 @@ const TEMPLATES = [
   },
   {
     id: "reminder",
-    icon: "🔔",
+    Icon: Bell,
     label_en: "Duty Reminder",
     label_ar: "تذكير واجب",
     category: "Operations",
@@ -80,7 +86,7 @@ const TEMPLATES = [
   },
   {
     id: "medical",
-    icon: "🩺",
+    Icon: Activity,
     label_en: "Medical Expiry",
     label_ar: "انتهاء طبي",
     category: "Compliance",
@@ -90,7 +96,7 @@ const TEMPLATES = [
   },
   {
     id: "training",
-    icon: "🎓",
+    Icon: GraduationCap,
     label_en: "Training Due",
     label_ar: "تدريب مستحق",
     category: "Compliance",
@@ -100,7 +106,7 @@ const TEMPLATES = [
   },
   {
     id: "leave_approved",
-    icon: "✅",
+    Icon: CheckCircle2,
     label_en: "Leave Approved",
     label_ar: "موافقة إجازة",
     category: "HR",
@@ -110,7 +116,7 @@ const TEMPLATES = [
   },
   {
     id: "custom",
-    icon: "✍️",
+    Icon: FileText,
     label_en: "Custom Message",
     label_ar: "رسالة مخصصة",
     category: "Custom",
@@ -448,7 +454,7 @@ export function EmailModule({ crew = [], users = [], setSyncStatus }) {
 
     setResult({
       ok: failCount === 0,
-      message: `✅ ${t.sent || "تم الإرسال"}: ${successCount} · ❌ ${
+      message: `${t.sent || "تم الإرسال"}: ${successCount} · ${
         t.failed || "فشل"
       }: ${failCount}${activeSender ? ` (عبر ${activeSender.email})` : ""}`,
       details: results,
@@ -487,17 +493,17 @@ export function EmailModule({ crew = [], users = [], setSyncStatus }) {
   return (
     <div className="space-y-4">
       {/* ═══ Header ═══ */}
-      <div className="bg-slate-900 dark:bg-slate-800 border border-slate-700 rounded-xl p-4 text-white">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 bg-sky-600 rounded-lg flex items-center justify-center">
-              <Mail className="w-6 h-6" />
+      <div className="bg-slate-900 dark:bg-slate-800 border border-slate-700 rounded-xl p-3 text-white">
+        <div className="flex flex-wrap items-center justify-between gap-2.5">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 bg-sky-600 rounded-lg flex items-center justify-center shrink-0">
+              <Mail className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="text-lg font-bold">
+              <h2 className="text-base font-bold leading-tight">
                 {t.emailTitle || "إدارة وإرسال البريد الإلكتروني"}
               </h2>
-              <div className="text-xs text-slate-300">
+              <div className="text-[11px] text-slate-300">
                 إضافة حسابات البريد المرسل (SMTP / Relay) والبعث من خلالها للطاقم والجهات الخارجية
               </div>
             </div>
@@ -893,7 +899,7 @@ export function EmailModule({ crew = [], users = [], setSyncStatus }) {
               <button
                 type="button"
                 onClick={() => setAutoFlightEmails(!autoFlightEmails)}
-                className={`relative w-12 h-7 rounded-full transition shrink-0 ${
+                className={`relative w-11 h-6 rounded-full transition shrink-0 ${
                   autoFlightEmails
                     ? "bg-sky-600"
                     : "bg-slate-300 dark:bg-slate-600"
@@ -901,9 +907,10 @@ export function EmailModule({ crew = [], users = [], setSyncStatus }) {
                 aria-label="toggle auto flight emails"
               >
                 <span
-                  className={`absolute top-1 left-1 w-5 h-5 bg-white rounded-full shadow transition-transform ${
-                    autoFlightEmails ? "translate-x-5" : "translate-x-0"
-                  }`}
+                  className="absolute top-0.5 left-0 w-5 h-5 bg-white rounded-full shadow transition-transform"
+                  style={{
+                    transform: autoFlightEmails ? "translateX(22px)" : "translateX(2px)",
+                  }}
                 />
               </button>
             </div>
@@ -920,7 +927,7 @@ export function EmailModule({ crew = [], users = [], setSyncStatus }) {
               <button
                 type="button"
                 onClick={() => setAutoExpiryAlerts(!autoExpiryAlerts)}
-                className={`relative w-12 h-7 rounded-full transition shrink-0 ${
+                className={`relative w-11 h-6 rounded-full transition shrink-0 ${
                   autoExpiryAlerts
                     ? "bg-amber-600"
                     : "bg-slate-300 dark:bg-slate-600"
@@ -928,9 +935,10 @@ export function EmailModule({ crew = [], users = [], setSyncStatus }) {
                 aria-label="toggle auto expiry alerts"
               >
                 <span
-                  className={`absolute top-1 left-1 w-5 h-5 bg-white rounded-full shadow transition-transform ${
-                    autoExpiryAlerts ? "translate-x-5" : "translate-x-0"
-                  }`}
+                  className="absolute top-0.5 left-0 w-5 h-5 bg-white rounded-full shadow transition-transform"
+                  style={{
+                    transform: autoExpiryAlerts ? "translateX(22px)" : "translateX(2px)",
+                  }}
                 />
               </button>
             </div>
@@ -1132,22 +1140,26 @@ export function EmailModule({ crew = [], users = [], setSyncStatus }) {
               ))}
             </div>
             <div className="grid grid-cols-2 gap-1.5 mt-2">
-              {filteredTemplates.map((tmp) => (
-                <button
-                  key={tmp.id}
-                  type="button"
-                  onClick={() => applyTemplate(tmp.id)}
-                  className={`p-2 rounded-lg border text-xs font-bold text-start ${
-                    selectedTemplate === tmp.id
-                      ? "bg-sky-50 dark:bg-sky-950 border-sky-500 text-sky-900 dark:text-sky-200"
-                      : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300"
-                  }`}
-                >
-                  <div className="truncate">
-                    {lang === "ar" ? tmp.label_ar : tmp.label_en}
-                  </div>
-                </button>
-              ))}
+              {filteredTemplates.map((tmp) => {
+                const TmpIcon = tmp.Icon || FileText;
+                return (
+                  <button
+                    key={tmp.id}
+                    type="button"
+                    onClick={() => applyTemplate(tmp.id)}
+                    className={`p-2 rounded-lg border text-xs font-bold text-start flex items-center gap-1.5 ${
+                      selectedTemplate === tmp.id
+                        ? "bg-sky-50 dark:bg-sky-950 border-sky-500 text-sky-900 dark:text-sky-200"
+                        : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300"
+                    }`}
+                  >
+                    <TmpIcon className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+                    <div className="truncate">
+                      {lang === "ar" ? tmp.label_ar : tmp.label_en}
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -1223,7 +1235,7 @@ export function EmailModule({ crew = [], users = [], setSyncStatus }) {
                 <div className="mt-2 max-h-32 overflow-auto">
                   {result.details.map((d, i) => (
                     <div key={i} className="text-[11px] py-0.5">
-                      {d.ok ? "✓" : "✕"} {d.name}{" "}
+                      {d.ok ? "OK:" : "ERR:"} {d.name}{" "}
                       {d.error ? `— ${d.error}` : ""}
                     </div>
                   ))}
@@ -1256,12 +1268,12 @@ export function EmailModule({ crew = [], users = [], setSyncStatus }) {
                       <span className="font-bold">
                         {h.success > 0 && (
                           <span className="text-emerald-600">
-                            ✓ {h.success}
+                            +{h.success}
                           </span>
                         )}
                         {h.failed > 0 && (
                           <span className="text-rose-600 ms-2">
-                            ✕ {h.failed}
+                            !{h.failed}
                           </span>
                         )}
                       </span>

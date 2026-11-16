@@ -118,6 +118,33 @@ export function buildDefaultSeededDashboards() {
       updatedAt: now,
     },
     {
+      id: "md_main_default",
+      name: "Executive Overview",
+      nameAr: "لوحة التحكم الرئيسية",
+      description:
+        "Default executive dashboard with live operations KPIs, fleet readiness, crew duty, and alerts",
+      scope: "main",
+      widgets: [
+        { id: "ops-kpi-overview", size: "large" },
+        { id: "flight-watch", size: "medium" },
+        { id: "compliance-score", size: "medium" },
+        { id: "fleet-readiness", size: "small" },
+        { id: "crew-duty-ftl", size: "small" },
+        { id: "standby-leave-pulse", size: "small" },
+        { id: "quick-ops-actions", size: "medium" },
+        { id: "expiring-docs-radar", size: "medium" },
+      ],
+      visibility: "all",
+      viewRoles: ["superAdmin", "dispatcher", "captain", "camo", "crewMember"],
+      editRoles: ["superAdmin", "dispatcher"],
+      viewUsers: [],
+      editUsers: [],
+      isDefault: true,
+      createdBy: "system",
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
       id: "md_occ_operations",
       name: "OCC Flight Operations Center",
       nameAr: "لوحة مركز العمليات الجوية (OCC)",
@@ -239,6 +266,29 @@ export function buildDefaultSeededDashboards() {
       createdAt: now,
       updatedAt: now,
     },
+    {
+      id: "sd_sales_default",
+      name: "Commercial & Charter Overview",
+      nameAr: "نظرة عامة على المبيعات والرحلات العارضة",
+      description:
+        "Monitors commercial revenue, charter flight requests, quotation pipeline, and empty legs",
+      scope: "sales",
+      widgets: [
+        { id: "sales-kpi-summary", size: "large" },
+        { id: "charter-requests-watch", size: "medium" },
+        { id: "empty-legs-radar", size: "small" },
+        { id: "sales-revenue-funnel", size: "medium" },
+      ],
+      visibility: "all",
+      viewRoles: ["superAdmin", "dispatcher", "captain", "camo", "crewMember"],
+      editRoles: ["superAdmin", "dispatcher"],
+      viewUsers: [],
+      editUsers: [],
+      isDefault: true,
+      createdBy: "system",
+      createdAt: now,
+      updatedAt: now,
+    },
   ];
 }
 
@@ -247,7 +297,7 @@ function mergeMissingScopeSeedDashboards(list = []) {
   if (arr.length === 0) return buildDefaultSeededDashboards();
   const defaults = buildDefaultSeededDashboards();
   const existingIds = new Set(arr.map((d) => d?.id).filter(Boolean));
-  const requiredScopes = ["quality", "camo", "training"];
+  const requiredScopes = ["main", "sales", "quality", "camo", "training"];
   let changed = false;
   requiredScopes.forEach((sc) => {
     const hasScope = arr.some((d) => d?.scope === sc || d?.scope === "both");
@@ -301,7 +351,7 @@ export function canUserManageDashboardsInScope(scope, user, canFn) {
   if (!user) return false;
   if (isAdminUser(user)) return true;
   if (typeof canFn !== "function") return false;
-  if (canFn("users.perms")) return true;
+  if (canFn("users.perms") || canFn("settings.dashboards_manage")) return true;
   if (scope === "quality") {
     return canFn("quality.manage_dashboards") || canFn("dashboard.manage_named");
   }

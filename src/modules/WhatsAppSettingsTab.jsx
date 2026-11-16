@@ -179,20 +179,20 @@ export function WhatsAppSettingsTab() {
   };
 
   return (
-    <div className="max-w-3xl space-y-4">
+    <div className="w-full grid grid-cols-1 lg:grid-cols-12 gap-3 items-start">
       {/* Header Banner */}
-      <div className="rounded-2xl p-4 text-white bg-gradient-to-r from-emerald-600 to-green-700 shadow-md flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-xl bg-white/20 flex items-center justify-center">
-            <MessageCircle className="w-6 h-6" />
+      <div className="lg:col-span-12 rounded-xl p-3 text-white bg-gradient-to-r from-emerald-600 to-green-700 shadow-sm flex flex-wrap items-center justify-between gap-2.5">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center shrink-0">
+            <MessageCircle className="w-4 h-4" />
           </div>
           <div>
-            <h3 className="text-lg font-bold">
+            <h3 className="text-sm font-bold leading-tight">
               {lang === 'ar'
                 ? 'إعدادات الربط مع واتساب للأعمال'
                 : 'WhatsApp Business Integration'}
             </h3>
-            <p className="text-xs text-emerald-100">
+            <p className="text-[11px] text-emerald-100">
               {lang === 'ar'
                 ? 'ربط مفتاح API ورقم الهاتف وتفعيل إشعارات الجدول التلقائية'
                 : 'Configure Business API credentials and automated flight schedule templates'}
@@ -201,8 +201,8 @@ export function WhatsAppSettingsTab() {
         </div>
 
         {firebaseUser ? (
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/15 text-xs font-semibold">
-            <CheckCircle2 className="w-4 h-4 text-emerald-200" />
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/15 text-xs font-semibold">
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-200" />
             <span>
               {cloudSynced ? 'Cloud Synced' : firebaseUser.email}
             </span>
@@ -211,9 +211,9 @@ export function WhatsAppSettingsTab() {
           <button
             type="button"
             onClick={handleConnectGoogle}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white text-emerald-800 text-xs font-bold shadow hover:bg-emerald-50 transition"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white text-emerald-800 text-xs font-bold shadow-xs hover:bg-emerald-50 transition"
           >
-            <LogIn className="w-4 h-4" />
+            <LogIn className="w-3.5 h-3.5" />
             {lang === 'ar'
               ? 'ربط Google للحفظ السحابي'
               : 'Connect Google for Cloud Sync'}
@@ -222,7 +222,7 @@ export function WhatsAppSettingsTab() {
       </div>
 
       {/* Credentials Form */}
-      <section className="p-5 rounded-2xl space-y-4" style={cardStyle}>
+      <section className="lg:col-span-7 p-4 rounded-xl space-y-3" style={cardStyle}>
         <div className="grid md:grid-cols-2 gap-4">
           <Field
             label={
@@ -363,7 +363,7 @@ export function WhatsAppSettingsTab() {
             onClick={() =>
               setForm((f) => ({ ...f, autoNotifyFlights: !f.autoNotifyFlights }))
             }
-            className="relative w-14 h-8 rounded-full transition flex-shrink-0"
+            className="relative w-11 h-6 rounded-full transition flex-shrink-0"
             style={{
               backgroundColor: form.autoNotifyFlights
                 ? '#16a34a'
@@ -371,11 +371,11 @@ export function WhatsAppSettingsTab() {
             }}
           >
             <span
-              className="absolute top-1 w-6 h-6 bg-white rounded-full shadow transition-transform"
+              className="absolute top-0.5 left-0 w-5 h-5 bg-white rounded-full shadow transition-transform"
               style={{
                 transform: form.autoNotifyFlights
-                  ? 'translateX(28px)'
-                  : 'translateX(4px)',
+                  ? 'translateX(22px)'
+                  : 'translateX(2px)',
               }}
             />
           </button>
@@ -385,7 +385,7 @@ export function WhatsAppSettingsTab() {
           type="button"
           onClick={handleSave}
           disabled={saving}
-          className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm flex items-center justify-center gap-2 transition disabled:opacity-50"
+          className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-2 transition disabled:opacity-50"
         >
           {firebaseUser ? (
             <Cloud className="w-4 h-4" />
@@ -401,7 +401,7 @@ export function WhatsAppSettingsTab() {
       </section>
 
       {/* Template Preview & Test */}
-      <section className="p-5 rounded-2xl space-y-3" style={cardStyle}>
+      <section className="lg:col-span-5 p-4 rounded-xl space-y-3" style={cardStyle}>
         <h4
           className="text-sm font-bold"
           style={{ color: 'var(--text-primary)' }}

@@ -42,11 +42,10 @@ import {
   extractPDFFormFields,
 } from "../utils/pdfFiller";
 import { PERMIT_FIELD_CATALOG } from "../config/permitCatalog";
-import * as pdfjsLib from "pdfjs-dist";
-import pdfjsWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
 
 if (typeof window !== "undefined") {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
+  pdfjsLib.GlobalWorkerOptions.workerSrc = "/api/pdfjs/pdf.worker.min.mjs";
 }
 
 /* ═══ REALISTIC SAMPLE AVIATION DATA CATALOG FOR LIVE PREVIEW ═══ */
@@ -322,8 +321,9 @@ export function PDFFieldMapper({
         clonedBytes.set(new Uint8Array(arrayBuffer));
         const loadingTask = pdfjsLib.getDocument({
           data: clonedBytes,
-          cMapUrl: "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/cmaps/",
+          cMapUrl: "/api/pdfjs/cmaps/",
           cMapPacked: true,
+          standardFontDataUrl: "/api/pdfjs/standard_fonts/",
         });
         const pdf = await loadingTask.promise;
         if (cancelled) {

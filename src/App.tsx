@@ -13,6 +13,7 @@ import {
   ChevronDown,
   MoreHorizontal,
   BookOpen,
+  PhoneCall,
   User,
   ShieldCheck,
   FileSignature,
@@ -45,6 +46,7 @@ import {
   Activity,
   FileText,
   List,
+  Bell,
 } from "lucide-react";
 
 export const MENU_ICONS: Record<string, React.ComponentType<{ className?: string; style?: React.CSSProperties }>> = {
@@ -127,9 +129,29 @@ import { useLocalStorage } from "./hooks/useLocalStorage";
 import { logSafe, logLoginSafe } from "./utils/audit";
 import { unlockAudio } from "./utils/sounds";
 import { buildUnifiedFleetAndCamo } from "./utils/fleetCamoSync";
-import { hydrateNotificationSettingsFromSheet } from "./utils/notifications";
+import { showToast } from "./utils/dialog";
+import {
+  hydrateNotificationSettingsFromSheet,
+  requestBrowserNotificationPermission,
+  triggerLockscreenNotification,
+} from "./utils/notifications";
 import { hydrateEmailAccountsFromSheet } from "./utils/emailAccounts";
 import { getWhatsAppSettings } from "./utils/whatsapp";
+import {
+  getHeaderToolsConfig,
+  applyHeaderToolsFromRemote,
+  hydrateHeaderToolsFromSheet,
+} from "./utils/headerToolsConfig";
+import { hydrateFlightSettingsFromSheet } from "./utils/flightSettings";
+import {
+  hydrateCustomAirportsFromSheet,
+  hydrateAirportNotamsFromSheet,
+} from "./utils/airportDatabase";
+import { applyScheduleDesign } from "./utils/scheduleDesigns";
+import {
+  applyFlightContextMenuFromRemote,
+  hydrateFlightContextMenuFromSheet,
+} from "./utils/flightContextMenuConfig";
 
 /* ═══════ UI Components ═══════ */
 import { SyncBadge } from "./components/ui/SyncBadge";
@@ -141,7 +163,9 @@ import { AlertsPanel } from "./components/AlertsPanel";
 import { Login } from "./components/Login";
 import { GenDecModal } from "./components/GenDecModal";
 import { SoundNotifications } from "./components/SoundNotifications";
+import { PhoneDirectoryModal } from "./components/PhoneDirectoryModal";
 import { UserProfileModal } from "./components/UserProfileModal";
+import { AirportDirectoryModal } from "./components/AirportDirectoryModal";
 
 /* ═══════ Modules ═══════ */
 import { Dashboard as DashboardRaw } from "./modules/Dashboard";
@@ -222,7 +246,7 @@ const ALL_TABS_CONFIG = [
     icon: LayoutDashboard,
     label_en: "Dashboard",
     label_ar: "الرئيسية",
-    perm: "schedule.view",
+    perm: ["dashboard.view", "schedule.view"],
     position: "primary",
   },
   {
@@ -334,7 +358,7 @@ const ALL_TABS_CONFIG = [
     icon: BookOpen,
     label_en: "Manuals",
     label_ar: "الأدلة والمراجع",
-    perm: "schedule.view",
+    perm: ["manuals.view", "schedule.view"],
     position: "more",
   },
   {
@@ -469,11 +493,108 @@ function AppInner({
   const [reportsOpen, setReportsOpen] = useState(false);
   const reportsRef = useRef<HTMLDivElement>(null);
   const [viewingProfile, setViewingProfile] = useState<any>(null);
+  const [directoryOpen, setDirectoryOpen] = useState(false);
+  const [airportDirectoryOpen, setAirportDirectoryOpen] = useState(false);
+  const [headerToolsMenuOpen, setHeaderToolsMenuOpen] = useState(false);
+  const [alertsMenuOpen, setAlertsMenuOpen] = useState(false);
+  const headerToolsRef = useRef<HTMLDivElement>(null);
+
+  const [headerToolsLayout, setHeaderToolsLayout] = useState<string>(() => {
+    if (typeof window === "undefined") return "direct";
+    return localStorage.getItem("aeroops.headerToolsLayout") || "direct";
+  });
+
+  const [headerToolsItems, setHeaderToolsItems] = useState(() => getHeaderToolsConfig());
+
+  useEffect(() => {
+    const handler = () => {
+      const savedLayout = localStorage.getItem("aeroops.headerToolsLayout");
+      if (savedLayout) setHeaderToolsLayout(savedLayout);
+      setHeaderToolsItems(getHeaderToolsConfig());
+    };
+    window.addEventListener("aeroops:headerToolsLayoutChanged", handler);
+    window.addEventListener("aeroops:headerToolsConfigChanged", handler);
+    return () => {
+      window.removeEventListener("aeroops:headerToolsLayoutChanged", handler);
+      window.removeEventListener("aeroops:headerToolsConfigChanged", handler);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (settings?.headerToolsLayout) {
+      setHeaderToolsLayout(settings.headerToolsLayout);
+    }
+  }, [settings?.headerToolsLayout]);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (headerToolsRef.current && !headerToolsRef.current.contains(e.target as Node)) {
+        setHeaderToolsMenuOpen(false);
+      }
+    };
+    if (headerToolsMenuOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [headerToolsMenuOpen]);
 
   const [navLayout, setNavLayout] = useState(() => {
     if (typeof window === "undefined") return "top";
     return localStorage.getItem("aeroops.navLayout") || "top";
   });
+
+  const [notifPerm, setNotifPerm] = useState<string>(() => {
+    if (typeof window !== "undefined" && "Notification" in window) {
+      return Notification.permission;
+    }
+    return "default";
+  });
+
+  const handleToggleOrTestPush = async () => {
+    if (typeof window === "undefined" || !("Notification" in window)) {
+      showToast(
+        lang === "ar"
+          ? "المتصفح الحالي لا يدعم إشعارات النظام"
+          : "Browser does not support system push notifications",
+        "warning"
+      );
+      return;
+    }
+    if (Notification.permission !== "granted") {
+      const res = await requestBrowserNotificationPermission();
+      setNotifPerm(res || "default");
+      if (res === "granted") {
+        showToast(
+          lang === "ar"
+            ? "تم تفعيل إشعارات شاشة القفل بنجاح"
+            : "Lock screen push notifications enabled successfully",
+          "success"
+        );
+      } else {
+        showToast(
+          lang === "ar"
+            ? "يرجى السماح بالإشعارات من إعدادات المتصفح"
+            : "Notification permission was denied or dismissed",
+          "warning"
+        );
+      }
+    } else {
+      await triggerLockscreenNotification({
+        title: "AeroOps Operational Alert",
+        body:
+          lang === "ar"
+            ? "تنبيه تشغيلي فوري — الإشعارات نشطة وتعمل على شاشة الهاتف حتى أثناء قفل الشاشة"
+            : "Live operational alert — lock screen notifications verified",
+        category: "flight",
+      });
+      showToast(
+        lang === "ar"
+          ? "تم إرسال إشعار تجريبي لشاشة القفل"
+          : "Test notification sent to lock screen",
+        "info"
+      );
+    }
+  };
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -528,14 +649,26 @@ function AppInner({
         const rawTp = localStorage.getItem("aeroops.tabPreferences");
         const rawCm = localStorage.getItem("aeroops.customMenus");
         const rawTo = localStorage.getItem("aeroops.tabOrder");
+        const rawMm = localStorage.getItem("aeroops.moreMenu");
+        const rawNo = localStorage.getItem("aeroops.navItemsOrder");
+        const rawCc = localStorage.getItem("aeroops.crewContactCard");
+        const rawAc = localStorage.getItem("aeroops.airportCard");
         const nextTp = rawTp ? JSON.parse(rawTp) : null;
         const nextCm = rawCm ? JSON.parse(rawCm) : null;
         const nextTo = rawTo ? JSON.parse(rawTo) : null;
+        const nextMm = rawMm ? JSON.parse(rawMm) : null;
+        const nextNo = rawNo ? JSON.parse(rawNo) : null;
+        const nextCc = rawCc ? JSON.parse(rawCc) : null;
+        const nextAc = rawAc ? JSON.parse(rawAc) : null;
         setSettings((prev: any) => ({
           ...prev,
           tabPreferences: nextTp ?? prev?.tabPreferences,
           customMenus: nextCm ?? prev?.customMenus,
           tabOrder: nextTo ?? prev?.tabOrder,
+          moreMenuConfig: nextMm ?? prev?.moreMenuConfig,
+          navItemsOrder: nextNo ?? prev?.navItemsOrder,
+          crewContactCard: nextCc ?? prev?.crewContactCard,
+          airportCard: nextAc ?? prev?.airportCard,
         }));
       } catch {}
     };
@@ -792,6 +925,62 @@ function AppInner({
         setSettings(s);
         try {
           window.localStorage.setItem("aeroops.settingsCache", JSON.stringify(s));
+          const tp = s.tabPreferences;
+          if (tp && typeof tp === "object") {
+            window.localStorage.setItem("aeroops.tabPreferences", JSON.stringify(tp));
+            if (Array.isArray(tp.__tabOrder)) {
+              window.localStorage.setItem("aeroops.tabOrder", JSON.stringify(tp.__tabOrder));
+            }
+            if (tp.__moreMenuConfig && typeof tp.__moreMenuConfig === "object") {
+              window.localStorage.setItem("aeroops.moreMenu", JSON.stringify(tp.__moreMenuConfig));
+            }
+            if (Array.isArray(tp.__navItemsOrder)) {
+              window.localStorage.setItem("aeroops.navItemsOrder", JSON.stringify(tp.__navItemsOrder));
+            }
+            if (Array.isArray(tp.__customMenus)) {
+              window.localStorage.setItem("aeroops.customMenus", JSON.stringify(tp.__customMenus));
+            }
+            if (tp.__crewContactCard && typeof tp.__crewContactCard === "object") {
+              window.localStorage.setItem("aeroops.crewContactCard", JSON.stringify(tp.__crewContactCard));
+              window.dispatchEvent(new Event("aeroops:crewContactCardChanged"));
+            }
+            if (tp.__airportCard && typeof tp.__airportCard === "object") {
+              window.localStorage.setItem("aeroops.airportCard", JSON.stringify(tp.__airportCard));
+              window.dispatchEvent(new Event("aeroops:airportCardChanged"));
+            }
+            if (Array.isArray(tp.__headerToolsList) && tp.__headerToolsList.length > 0) {
+              applyHeaderToolsFromRemote(tp.__headerToolsList);
+            }
+            if (typeof tp.__headerToolsLayout === "string" && tp.__headerToolsLayout) {
+              window.localStorage.setItem("aeroops.headerToolsLayout", tp.__headerToolsLayout);
+              setHeaderToolsLayout(tp.__headerToolsLayout);
+              window.dispatchEvent(new Event("aeroops:headerToolsLayoutChanged"));
+            }
+            if (typeof (tp.__scheduleDesign || s.scheduleDesign) === "string" && (tp.__scheduleDesign || s.scheduleDesign)) {
+              applyScheduleDesign(tp.__scheduleDesign || s.scheduleDesign);
+            }
+            if (Array.isArray(tp.__flightContextMenuConfig) && tp.__flightContextMenuConfig.length > 0) {
+              applyFlightContextMenuFromRemote(tp.__flightContextMenuConfig);
+            } else if (Array.isArray(s.flightContextMenuConfig) && s.flightContextMenuConfig.length > 0) {
+              applyFlightContextMenuFromRemote(s.flightContextMenuConfig);
+            }
+            window.dispatchEvent(new Event("aeroops:prefsChanged"));
+          } else {
+            if (Array.isArray(s.headerToolsList) && s.headerToolsList.length > 0) {
+              applyHeaderToolsFromRemote(s.headerToolsList);
+            }
+            if (typeof s.headerToolsLayout === "string" && s.headerToolsLayout) {
+              window.localStorage.setItem("aeroops.headerToolsLayout", s.headerToolsLayout);
+              setHeaderToolsLayout(s.headerToolsLayout);
+              window.dispatchEvent(new Event("aeroops:headerToolsLayoutChanged"));
+            }
+            if (typeof s.scheduleDesign === "string" && s.scheduleDesign) {
+              applyScheduleDesign(s.scheduleDesign);
+            }
+            if (Array.isArray(s.flightContextMenuConfig) && s.flightContextMenuConfig.length > 0) {
+              applyFlightContextMenuFromRemote(s.flightContextMenuConfig);
+            }
+          }
         } catch {}
       }
       if (Array.isArray(r)) {
@@ -820,6 +1009,11 @@ function AppInner({
         hydrateNotificationSettingsFromSheet().catch(() => null),
         hydrateEmailAccountsFromSheet().catch(() => null),
         getWhatsAppSettings().catch(() => null),
+        hydrateFlightSettingsFromSheet().catch(() => null),
+        hydrateCustomAirportsFromSheet().catch(() => null),
+        hydrateAirportNotamsFromSheet().catch(() => null),
+        hydrateHeaderToolsFromSheet().catch(() => null),
+        hydrateFlightContextMenuFromSheet().catch(() => null),
       ]);
 
       if (Array.isArray(cm)) setCamoList(cm);
@@ -900,21 +1094,6 @@ function AppInner({
     else setUser(null);
   };
 
-  if (!user) {
-    return (
-      <>
-        <DialogHost />
-        <OfflineIndicator />
-        <Login
-          users={users}
-          onLogin={handleLogin}
-          settings={settings}
-          loading={loading}
-        />
-      </>
-    );
-  }
-
   const prefs = (() => {
     if (
       settings.tabPreferences &&
@@ -969,10 +1148,10 @@ function AppInner({
         if (parsed && typeof parsed === "object") return parsed;
       }
     } catch {}
-    return { enabled: true, label_ar: "المزيد", label_en: "More", icon: "MoreHorizontal" };
+    return { enabled: false, label_ar: "المزيد", label_en: "More", icon: "MoreHorizontal" };
   }, [settings?.moreMenuConfig, settings?.tabPreferences]);
 
-  const isMoreEnabled = moreMenuConfig.enabled !== false;
+  const isMoreEnabled = moreMenuConfig?.enabled === true;
 
   const getTabsByPosition = (position: string) => {
     const list = ALL_TABS_CONFIG.filter((item) => hasTabPerm(item.perm)).filter(
@@ -1156,6 +1335,21 @@ function AppInner({
     setDrawerOpen(false);
   };
 
+  if (!user) {
+    return (
+      <>
+        <DialogHost />
+        <OfflineIndicator />
+        <Login
+          users={users}
+          onLogin={handleLogin}
+          settings={settings}
+          loading={loading}
+        />
+      </>
+    );
+  }
+
   const displayName = user.fullName || user.username || "User";
   const operatorCode = (settings.operatorCode || "EACS").toUpperCase();
   const logoDisplayUrl = logoToDisplayUrl(settings.logo);
@@ -1163,7 +1357,7 @@ function AppInner({
   const showChrome = !(shouldShowCrewPortal && effectiveTab === "dashboard");
 
   const renderMain = () => (
-    <div className={shouldShowCrewPortal ? "pb-0" : "p-2 md:p-3 pb-20 md:pb-3"}>
+    <div className={shouldShowCrewPortal ? "pb-0 flex-1 min-h-0 flex flex-col h-full" : "p-1 md:p-1.5 flex-1 min-h-0 flex flex-col h-full"}>
       {loading && users.length === 0 ? (
         <div
           className="flex flex-col items-center justify-center py-20"
@@ -1188,7 +1382,7 @@ function AppInner({
               reloadFlights={reloadFlights}
               fleet={unifiedFleet}
               rawFleet={fleet}
-              camoList={camoList}
+              camoList={unifiedCamo}
               melList={melList}
               roles={roles}
               settings={settings}
@@ -1267,6 +1461,7 @@ function AppInner({
               fleet={unifiedFleet}
               camoList={unifiedCamo}
               settings={settings}
+              setSettings={setSettings}
               onGenDec={setGenDec}
               setSyncStatus={setSyncStatus}
             />
@@ -1463,6 +1658,20 @@ function AppInner({
               auditLogs={auditLogs}
               setAuditLogs={setAuditLogs}
               crew={crew}
+              flights={flights}
+              fleet={unifiedFleet}
+              camoList={unifiedCamo}
+              melList={melList}
+              leave={leave}
+              roster={roster}
+              standby={standby}
+              training={training}
+              setTab={goTab}
+              initialSubTab={
+                effectiveTab.startsWith("settings.")
+                  ? effectiveTab.split(".")[1]
+                  : undefined
+              }
               setSyncStatus={setSyncStatus}
             />
           )}
@@ -1505,7 +1714,14 @@ function AppInner({
           <div className="flex items-center gap-1.5">
             <PWAInstallButton settings={settings} />
             <SyncBadge status={syncStatus} onRetry={loadData} />
-            <AlertsPanel crew={crew} users={users} fleet={unifiedFleet} />
+            <AlertsPanel
+              crew={crew}
+              users={users}
+              fleet={unifiedFleet}
+              lang={lang}
+              notifPerm={notifPerm}
+              onTogglePush={handleToggleOrTestPush}
+            />
             {checkPerm(user, "settings.view") && (
               <button
                 onClick={() => goTab("settings")}
@@ -1562,14 +1778,14 @@ function AppInner({
               <img
                 src={logoDisplayUrl}
                 alt="logo"
-                className="w-11 h-11 rounded-lg object-contain bg-white p-1"
+                className="w-8 h-8 rounded-lg object-contain bg-white p-0.5"
               />
             ) : (
               <div
-                className="w-11 h-11 rounded-lg flex items-center justify-center flex-shrink-0"
+                className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
                 style={{ background: "var(--brand-gradient)" }}
               >
-                <Plane className="w-6 h-6 text-white" />
+                <Plane className="w-4 h-4 text-white" />
               </div>
             )}
             <div className="min-w-0 flex-1">
@@ -1781,13 +1997,33 @@ function AppInner({
                   <Settings className="w-4 h-4" />
                 </button>
               )}
+
+              <button
+                onClick={() => setAirportDirectoryOpen(true)}
+                className="p-2 rounded-lg transition shrink-0 hover:bg-slate-100 dark:hover:bg-slate-700/60"
+                style={{
+                  backgroundColor: "transparent",
+                  color: "var(--brand-primary)",
+                }}
+                title={lang === "ar" ? "دليل المطارات (Airport Directory)" : "Airport Directory"}
+                aria-label={lang === "ar" ? "دليل المطارات" : "Airport Directory"}
+              >
+                <Compass className="w-4 h-4" />
+              </button>
             </div>
 
             <div className="flex items-center justify-between gap-1">
               <div className="flex items-center gap-1">
                 <PWAInstallButton settings={settings} />
                 <SyncBadge status={syncStatus} onRetry={loadData} />
-                <AlertsPanel crew={crew} users={users} fleet={unifiedFleet} />
+                <AlertsPanel
+                  crew={crew}
+                  users={users}
+                  fleet={unifiedFleet}
+                  lang={lang}
+                  notifPerm={notifPerm}
+                  onTogglePush={handleToggleOrTestPush}
+                />
                 <button
                   onClick={() => setDarkMode(!darkMode)}
                   className="p-1.5 rounded-lg transition"
@@ -1818,318 +2054,338 @@ function AppInner({
   };
 
   const renderTopHeader = () => (
-    <header
-      className="sticky top-0 z-40 shadow-md transition-colors duration-300"
-      style={{
-        backgroundColor: "var(--bg-sidebar)",
-        borderBottom: "1px solid var(--border-default)",
-      }}
-    >
-      {/* Top Status Bar */}
-      <div
-        className="px-4 py-0 flex items-center justify-between gap-3 border-b text-xs transition-colors duration-300 flex-wrap"
-        style={{
-          backgroundColor: "var(--bg-app)",
-          borderColor: "var(--border-default)",
-          color: "var(--text-muted)",
-        }}
-      >
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5 flex-shrink-0">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span className="font-medium text-[11px]">System Online</span>
+    <header className="sticky top-0 z-40 bg-[#1b365d] text-white shadow-md select-none border-b border-[#142947]">
+      <div className="px-3 py-0 flex items-center justify-between gap-2 h-9">
+        {/* Left Side: Mobile Menu + Logo + Nav Tabs */}
+        <div className="flex items-center gap-2 h-full min-w-0">
+          <button
+            onClick={() => setDrawerOpen(true)}
+            className="md:hidden p-1 rounded hover:bg-white/10 text-white"
+            aria-label="Open menu"
+          >
+            <Menu className="w-4 h-4" />
+          </button>
+
+          {/* Logo / Operator Paw */}
+          <div className="flex items-center gap-1.5 shrink-0 px-1">
+            {logoDisplayUrl ? (
+              <img src={logoDisplayUrl} alt="logo" className="w-5 h-5 rounded object-contain bg-white" />
+            ) : (
+              <div className="w-5 h-5 rounded bg-sky-500/20 text-sky-300 flex items-center justify-center font-bold text-xs">
+                <Plane className="w-3.5 h-3.5 text-sky-300" />
+              </div>
+            )}
           </div>
 
-          <span style={{ color: "var(--border-default)" }}>|</span>
+          {/* Nav Tabs (SALES, OPS, CREW, MX, REPORTS...) */}
+          <nav className="hidden md:flex items-center h-full">
+            {unifiedTopNavItems.map((item) => {
+              if (item.kind === "tab" && item.tab) {
+                const { id, icon: Icon, label_en, label_ar } = item.tab;
+                const isActive = isNavTabActive(id);
+                const label = (lang === "ar" ? label_ar : label_en).toUpperCase();
 
-          <LiveClock />
+                return (
+                  <button
+                    key={`nav_tab_${id}`}
+                    onClick={() => goTab(id)}
+                    className={`h-full px-3 text-[11px] font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 border-t-2 ${
+                      isActive
+                        ? "border-[#84cc16] bg-[#162d4e] text-white shadow-xs"
+                        : "border-transparent text-slate-300 hover:text-white hover:bg-white/5"
+                    }`}
+                  >
+                    <Icon className="w-3.5 h-3.5 shrink-0" />
+                    <span>{label}</span>
+                  </button>
+                );
+              }
+
+              if (item.kind === "menu" && item.menu && item.tabs) {
+                const cMenu = item.menu;
+                const tabsInMenu = item.tabs;
+                const isMenuOpen = openMenuId === cMenu.id;
+                const hasActiveChild = tabsInMenu.some((t) => isNavTabActive(t.id));
+                const menuLabel = (lang === "ar" ? cMenu.label_ar || cMenu.label_en : cMenu.label_en || cMenu.label_ar).toUpperCase();
+
+                return (
+                  <div key={`nav_menu_${cMenu.id}`} className="relative h-full" data-nav-dropdown>
+                    <button
+                      onClick={() => toggleMenu(cMenu.id)}
+                      className={`h-full px-3 text-[11px] font-bold uppercase tracking-wider transition border-t-2 flex items-center gap-1 ${
+                        hasActiveChild
+                          ? "border-[#84cc16] bg-[#162d4e] text-white"
+                          : "border-transparent text-slate-300 hover:text-white hover:bg-white/5"
+                      }`}
+                    >
+                      <span>{menuLabel}</span>
+                      <ChevronDown className={`w-3 h-3 transition-transform ${isMenuOpen ? "rotate-180" : ""}`} />
+                    </button>
+                    {isMenuOpen && (
+                      <div className="absolute top-full start-0 mt-0.5 w-48 rounded-md shadow-xl bg-[#1b365d] border border-slate-700 overflow-hidden z-50 py-1">
+                        {tabsInMenu.map(({ id, icon: Icon, label_en, label_ar }) => {
+                          const isItemActive = isNavTabActive(id);
+                          return (
+                            <button
+                              key={id}
+                              onClick={() => goTab(id)}
+                              className={`w-full flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-start transition ${
+                                isItemActive ? "bg-[#84cc16] text-slate-900 font-bold" : "text-slate-200 hover:bg-white/10"
+                              }`}
+                            >
+                              <Icon className="w-3.5 h-3.5" />
+                              <span>{lang === "ar" ? label_ar : label_en}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+
+              return null;
+            })}
+          </nav>
         </div>
 
-        {/* User Profile & Top Control Icons Group */}
-        <div className="flex items-center gap-2 shrink-0">
+        {/* Right Side: Tools + User Profile + AOC + Power */}
+        <div className="flex items-center gap-1.5 text-xs h-full shrink-0">
+          {(() => {
+            const enabledTools = headerToolsItems.filter((t) => t.enabled !== false);
+            
+            // Individual tool item placement (t.showDirect) takes precedence
+            const directTools = headerToolsLayout === "all_menu" 
+              ? [] 
+              : enabledTools.filter((t) => t.showDirect !== false);
+
+            const menuTools = headerToolsLayout === "all_menu"
+              ? enabledTools
+              : enabledTools.filter((t) => t.showDirect === false);
+
+            const renderToolIcon = (tool: any, isMenu = false) => {
+              if (tool.id === "airports") {
+                return isMenu ? (
+                  <button
+                    key="airports"
+                    onClick={() => {
+                      setAirportDirectoryOpen(true);
+                      setHeaderToolsMenuOpen(false);
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-white/10 hover:text-white transition text-start"
+                  >
+                    <Compass className="w-4 h-4 text-sky-400 shrink-0" />
+                    <span>{lang === "ar" ? "دليل المطارات (Airport Directory)" : "Airport Directory"}</span>
+                  </button>
+                ) : (
+                  <button
+                    key="airports"
+                    onClick={() => setAirportDirectoryOpen(true)}
+                    className="p-1 rounded hover:bg-white/10 text-slate-200 transition"
+                    title={lang === "ar" ? "دليل المطارات (Airport Directory)" : "Airport Directory"}
+                  >
+                    <Compass className="w-3.5 h-3.5 text-sky-300" />
+                  </button>
+                );
+              }
+
+              if (tool.id === "settings") {
+                if (!checkPerm(user, "settings.view")) return null;
+                return isMenu ? (
+                  <button
+                    key="settings"
+                    onClick={() => {
+                      goTab("settings");
+                      setHeaderToolsMenuOpen(false);
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-white/10 hover:text-white transition text-start"
+                  >
+                    <Settings className="w-4 h-4 text-slate-300 shrink-0" />
+                    <span>{lang === "ar" ? "الإعدادات" : "Settings"}</span>
+                  </button>
+                ) : (
+                  <button
+                    key="settings"
+                    onClick={() => goTab("settings")}
+                    className="p-1 rounded hover:bg-white/10 text-slate-200 transition"
+                    title={lang === "ar" ? "الإعدادات" : "Settings"}
+                  >
+                    <Settings className="w-3.5 h-3.5 text-slate-300" />
+                  </button>
+                );
+              }
+
+              if (tool.id === "lang") {
+                return isMenu ? (
+                  <button
+                    key="lang"
+                    onClick={() => {
+                      setLang(lang === "ar" ? "en" : "ar");
+                      setHeaderToolsMenuOpen(false);
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-white/10 hover:text-white transition text-start"
+                  >
+                    <Globe className="w-4 h-4 text-sky-400 shrink-0" />
+                    <span>{lang === "ar" ? "English (EN)" : "العربية (AR)"}</span>
+                  </button>
+                ) : (
+                  <button
+                    key="lang"
+                    onClick={() => setLang(lang === "ar" ? "en" : "ar")}
+                    className="p-1 rounded hover:bg-white/10 text-slate-200 flex items-center gap-0.5 text-[11px] font-bold transition"
+                    title="Language"
+                  >
+                    <Globe className="w-3.5 h-3.5 text-sky-300" />
+                    <span className="hidden sm:inline">{lang === "ar" ? "AR" : "EN"}</span>
+                  </button>
+                );
+              }
+
+              if (tool.id === "notifications") {
+                return isMenu ? (
+                  <button
+                    key="notifications"
+                    onClick={() => {
+                      setAlertsMenuOpen(true);
+                      setHeaderToolsMenuOpen(false);
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-white/10 hover:text-white transition text-start"
+                  >
+                    <Bell className="w-4 h-4 text-amber-400 shrink-0" />
+                    <span>{lang === "ar" ? "التنبيهات والإشعارات" : "Notifications & Alerts"}</span>
+                  </button>
+                ) : (
+                  <AlertsPanel
+                    key="notifications"
+                    variant="topbar"
+                    crew={crew}
+                    users={users}
+                    fleet={unifiedFleet}
+                    lang={lang}
+                    notifPerm={notifPerm}
+                    onTogglePush={handleToggleOrTestPush}
+                  />
+                );
+              }
+
+              if (tool.id === "directory") {
+                return isMenu ? (
+                  <button
+                    key="directory"
+                    onClick={() => {
+                      setDirectoryOpen(true);
+                      setHeaderToolsMenuOpen(false);
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-white/10 hover:text-white transition text-start"
+                  >
+                    <PhoneCall className="w-4 h-4 text-slate-300 shrink-0" />
+                    <span>{lang === "ar" ? "دليل هواتف العمليات" : "Operational Directory"}</span>
+                  </button>
+                ) : (
+                  <button
+                    key="directory"
+                    onClick={() => setDirectoryOpen(true)}
+                    className="p-1 rounded hover:bg-white/10 text-slate-200 transition"
+                    title="Operational Directory"
+                  >
+                    <PhoneCall className="w-3.5 h-3.5 text-slate-300" />
+                  </button>
+                );
+              }
+
+              if (tool.id === "theme") {
+                return isMenu ? (
+                  <button
+                    key="theme"
+                    onClick={() => {
+                      setDarkMode(!darkMode);
+                      setHeaderToolsMenuOpen(false);
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-white/10 hover:text-white transition text-start"
+                  >
+                    {darkMode ? <Sun className="w-4 h-4 text-amber-300 shrink-0" /> : <Moon className="w-4 h-4 text-slate-300 shrink-0" />}
+                    <span>{darkMode ? (lang === "ar" ? "الوضع النهاري" : "Light Mode") : (lang === "ar" ? "الوضع الليلي" : "Dark Mode")}</span>
+                  </button>
+                ) : (
+                  <button
+                    key="theme"
+                    onClick={() => setDarkMode(!darkMode)}
+                    className="p-1 rounded hover:bg-white/10 text-slate-200 transition"
+                    title="Toggle Theme"
+                  >
+                    {darkMode ? <Sun className="w-3.5 h-3.5 text-amber-300" /> : <Moon className="w-3.5 h-3.5 text-slate-300" />}
+                  </button>
+                );
+              }
+
+              return null;
+            };
+
+            return (
+              <div className="flex items-center gap-1">
+                {/* Direct Tools rendered on header bar */}
+                {directTools.map((t) => renderToolIcon(t, false))}
+
+                {/* Grouped 3-Bars Menu for remaining tools */}
+                {menuTools.length > 0 && (
+                  <div className="relative" ref={headerToolsRef}>
+                    <button
+                      onClick={() => setHeaderToolsMenuOpen(!headerToolsMenuOpen)}
+                      className="p-1 rounded hover:bg-white/10 text-slate-200 flex items-center gap-1 transition"
+                      title={lang === "ar" ? "القائمة المجمعة (3 أشرطة)" : "Grouped Menu"}
+                    >
+                      <Menu className="w-4 h-4 text-sky-300" />
+                    </button>
+
+                    {headerToolsMenuOpen && (
+                      <div className="absolute top-full end-0 mt-1 w-56 rounded-xl shadow-2xl bg-[#1b365d] border border-slate-700/80 overflow-hidden z-50 py-1.5 animate-in fade-in zoom-in-95 duration-100 font-sans">
+                        {menuTools.map((t) => renderToolIcon(t, true))}
+                      </div>
+                    )}
+
+                    {/* Modal-free dropdown anchor when Notifications opened from 3-bars menu */}
+                    <AlertsPanel
+                      variant="topbar"
+                      hiddenTrigger
+                      externalOpen={alertsMenuOpen}
+                      onExternalClose={() => setAlertsMenuOpen(false)}
+                      crew={crew}
+                      users={users}
+                      fleet={unifiedFleet}
+                      lang={lang}
+                      notifPerm={notifPerm}
+                      onTogglePush={handleToggleOrTestPush}
+                    />
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          <span className="opacity-30">|</span>
+
+          {/* User Display Name */}
           <button
             onClick={() => setViewingProfile(user)}
-            className="flex items-center gap-1.5 flex-shrink-0 px-2 py-0.5 rounded-lg transition hover:bg-slate-100 dark:hover:bg-slate-700/60"
-            title={lang === "ar" ? "عرض الملف الشخصي" : "View profile"}
+            className="flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-white/10 text-white font-bold text-xs"
           >
-            <User
-              className="w-3.5 h-3.5"
-              style={{ color: "var(--brand-primary)" }}
-            />
-            <span className="font-bold text-xs" style={{ color: "var(--text-primary)" }}>
-              {displayName}
-            </span>
-            <span
-              className="px-1.5 py-0.5 rounded text-[10px] font-mono border"
-              style={{
-                backgroundColor: "var(--bg-card)",
-                color: "var(--brand-primary)",
-                borderColor: "var(--border-default)",
-              }}
-            >
-              {operatorCode}
-            </span>
+            <User className="w-3.5 h-3.5 text-sky-400" />
+            <span className="hidden sm:inline font-mono text-[11px] uppercase tracking-tight">{displayName}</span>
           </button>
 
-          {/* Settings Icon beside User Name */}
-          {checkPerm(user, "settings.view") && (
-            <button
-              onClick={() => goTab("settings")}
-              className={`p-1.5 rounded-lg transition flex items-center justify-center shrink-0 ${
-                effectiveTab === "settings"
-                  ? "ring-2 ring-blue-500 shadow-xs"
-                  : "hover:bg-slate-100 dark:hover:bg-slate-700/60"
-              }`}
-              style={{
-                backgroundColor:
-                  effectiveTab === "settings"
-                    ? "var(--bg-card)"
-                    : "transparent",
-                color:
-                  effectiveTab === "settings"
-                    ? "var(--brand-primary)"
-                    : "var(--text-muted)",
-              }}
-              title={lang === "ar" ? "الإعدادات" : "Settings"}
-              aria-label={lang === "ar" ? "الإعدادات" : "Settings"}
-            >
-              <Settings className="w-3.5 h-3.5" />
-            </button>
-          )}
+          {/* AOC Code Badge */}
+          <span className="px-1.5 py-0.5 rounded bg-sky-900/80 border border-sky-600/50 text-[10px] font-mono font-bold text-sky-200">
+            {operatorCode}
+          </span>
 
-          {/* Notifications Icon beside Settings */}
-          <AlertsPanel crew={crew} users={users} fleet={unifiedFleet} />
-
-          {/* Dark / Light Mode Toggle beside Notifications */}
-          <button
-            onClick={() => setDarkMode(!darkMode)}
-            className="p-1.5 rounded-lg transition hover:bg-slate-100 dark:hover:bg-slate-700/60 shrink-0"
-            style={{ color: "var(--text-muted)" }}
-            title={lang === "ar" ? "تبديل المظهر" : "Toggle Theme"}
-          >
-            {darkMode ? (
-              <Sun className="w-3.5 h-3.5" />
-            ) : (
-              <Moon className="w-3.5 h-3.5" />
-            )}
-          </button>
-
-          <span style={{ color: "var(--border-default)" }}>|</span>
-
+          {/* Power / Logout */}
           <button
             onClick={handleLogout}
-            className="transition hover:opacity-80 flex-shrink-0 p-1"
-            style={{ color: "var(--brand-primary)" }}
+            className="p-1 rounded hover:bg-rose-600/30 text-rose-300 hover:text-rose-100 transition"
             title="Logout"
           >
             <LogOut className="w-3.5 h-3.5" />
           </button>
-        </div>
-      </div>
-
-      {/* Sleek Compact Main Nav */}
-      <div
-        className="px-4 py-0 flex items-center gap-3 md:gap-5"
-        style={{ borderBottom: "1px solid var(--border-default)" }}
-      >
-        <button
-          onClick={() => setDrawerOpen(true)}
-          className="md:hidden p-1.5 rounded-lg"
-          style={{
-            backgroundColor: "var(--bg-app)",
-            color: "var(--text-primary)",
-          }}
-          aria-label="Open menu"
-        >
-          <Menu className="w-4 h-4" />
-        </button>
-
-        <div className="flex items-center gap-2 py-0.5">
-          {logoDisplayUrl ? (
-            <img
-              src={logoDisplayUrl}
-              alt="logo"
-              className="w-7 h-7 rounded object-contain bg-white"
-            />
-          ) : (
-            <div
-              className="w-7 h-7 rounded flex items-center justify-center"
-              style={{ background: "var(--brand-gradient)" }}
-            >
-              <Plane className="w-4 h-4 text-white" />
-            </div>
-          )}
-          <span
-            className="font-black text-base tracking-wider"
-            style={{ color: "var(--text-primary)" }}
-          >
-            {operatorCode}
-          </span>
-        </div>
-
-        <nav className="hidden md:flex items-center gap-1 flex-1">
-          {unifiedTopNavItems.map((item) => {
-            if (item.kind === "tab" && item.tab) {
-              const { id, icon: Icon, label_en, label_ar } = item.tab;
-              const isActive = isNavTabActive(id);
-              const label = lang === "ar" ? label_ar : label_en;
-
-              return (
-                <button
-                  key={`nav_tab_${id}`}
-                  onClick={() => goTab(id)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold transition-all border-b-2 ${
-                    isActive
-                      ? "border-[var(--brand-primary)] text-[var(--brand-primary)] bg-[var(--bg-app)]"
-                      : "border-transparent text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-app)]/50"
-                  }`}
-                >
-                  <Icon className="w-3.5 h-3.5" /> {label}
-                </button>
-              );
-            }
-
-            if (item.kind === "menu" && item.menu && item.tabs) {
-              const cMenu = item.menu;
-              const tabsInMenu = item.tabs;
-              const isMenuOpen = openMenuId === cMenu.id;
-              const hasActiveChild = tabsInMenu.some((t) => isNavTabActive(t.id));
-              const MenuIcon = getMenuIcon(cMenu.icon);
-              const menuLabel =
-                lang === "ar"
-                  ? cMenu.label_ar || cMenu.label_en
-                  : cMenu.label_en || cMenu.label_ar;
-
-              return (
-                <div key={`nav_menu_${cMenu.id}`} className="relative" data-nav-dropdown>
-                  <button
-                    onClick={() => toggleMenu(cMenu.id)}
-                    className={`flex items-center gap-1 px-3 py-1.5 text-xs font-bold transition border-b-2 ${
-                      hasActiveChild
-                        ? "border-[var(--brand-primary)] text-[var(--brand-primary)] bg-[var(--bg-app)]"
-                        : "border-transparent text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-app)]/50"
-                    }`}
-                  >
-                    <MenuIcon className="w-3.5 h-3.5" />
-                    <span className="hidden lg:inline">{menuLabel}</span>
-                    <ChevronDown
-                      className={`w-3 h-3 transition-transform ${
-                        isMenuOpen ? "rotate-180" : ""
-                      }`}
-                    />
-                  </button>
-                  {isMenuOpen && (
-                    <div
-                      className="absolute top-full end-0 mt-1 w-56 rounded-lg shadow-2xl overflow-hidden z-50 max-h-[70vh] overflow-y-auto border"
-                      style={{
-                        backgroundColor: "var(--bg-card)",
-                        borderColor: "var(--border-default)",
-                      }}
-                    >
-                      <div
-                        className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider border-b"
-                        style={{
-                          color: "var(--text-muted)",
-                          borderColor: "var(--border-default)",
-                          backgroundColor: "var(--bg-app)",
-                        }}
-                      >
-                        {menuLabel}
-                      </div>
-                      {tabsInMenu.map(({ id, icon: Icon, label_en, label_ar }) => {
-                        const isItemActive = isNavTabActive(id);
-                        return (
-                          <button
-                            key={id}
-                            onClick={() => goTab(id)}
-                            className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold transition text-start"
-                            style={
-                              isItemActive
-                                ? {
-                                    background: "var(--brand-gradient)",
-                                    color: "white",
-                                  }
-                                : { color: "var(--text-muted)" }
-                            }
-                          >
-                            <Icon className="w-3.5 h-3.5 flex-shrink-0" />
-                            <span className="truncate">
-                              {lang === "ar" ? label_ar : label_en}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              );
-            }
-
-            if (item.kind === "more" && item.tabs) {
-              const tabsInMore = item.tabs;
-              return (
-                <div key="nav_more_menu" className="relative" ref={moreRef} data-nav-dropdown>
-                  <button
-                    onClick={() => toggleMenu("more")}
-                    className="flex items-center gap-1 px-3 py-1.5 text-xs font-bold transition text-[var(--text-muted)] hover:text-[var(--text-primary)]"
-                  >
-                    {(() => {
-                      const IconComp = getMenuIcon(moreMenuConfig.icon || "MoreHorizontal");
-                      return <IconComp className="w-3.5 h-3.5" />;
-                    })()}
-                    <span className="hidden lg:inline">
-                      {lang === "ar"
-                        ? moreMenuConfig.label_ar || "المزيد"
-                        : moreMenuConfig.label_en || "More"}
-                    </span>
-                    <ChevronDown
-                      className={`w-3 h-3 transition-transform ${
-                        moreOpen ? "rotate-180" : ""
-                      }`}
-                    />
-                  </button>
-                  {moreOpen && (
-                    <div
-                      className="absolute top-full end-0 mt-1 w-56 rounded-lg shadow-2xl overflow-hidden z-50 max-h-[70vh] overflow-y-auto border"
-                      style={{
-                        backgroundColor: "var(--bg-card)",
-                        borderColor: "var(--border-default)",
-                      }}
-                    >
-                      {tabsInMore.map(({ id, icon: Icon, label_en, label_ar }) => {
-                        const isMoreItemActive = isNavTabActive(id);
-                        return (
-                          <button
-                            key={id}
-                            onClick={() => goTab(id)}
-                            className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold transition text-start"
-                            style={
-                              isMoreItemActive
-                                ? {
-                                    background: "var(--brand-gradient)",
-                                    color: "white",
-                                  }
-                                : { color: "var(--text-muted)" }
-                            }
-                          >
-                            <Icon className="w-3.5 h-3.5" />
-                            {lang === "ar" ? label_ar : label_en}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              );
-            }
-
-            return null;
-          })}
-        </nav>
-
-        <div className="ms-auto flex items-center gap-2 py-0.5">
-          <PWAInstallButton settings={settings} />
-          <SyncBadge status={syncStatus} onRetry={loadData} />
         </div>
       </div>
     </header>
@@ -2137,19 +2393,32 @@ function AppInner({
 
   return (
     <div
-      className="min-h-screen theme-transition"
+      className="h-screen flex flex-col overflow-hidden theme-transition"
       style={{ backgroundColor: "var(--bg-app)", color: "var(--text-primary)" }}
       dir={t.dir}
     >
       <DialogHost />
       <OfflineIndicator />
       <SoundNotifications />
+      <PhoneDirectoryModal
+        isOpen={directoryOpen}
+        onClose={() => setDirectoryOpen(false)}
+        crew={crew}
+        users={users}
+        lang={lang}
+      />
+      <AirportDirectoryModal
+        isOpen={airportDirectoryOpen}
+        onClose={() => setAirportDirectoryOpen(false)}
+        lang={lang}
+        onOpenSettings={() => goTab("settings")}
+      />
 
       {showChrome && !isSideNav && renderTopHeader()}
       {showChrome && isSideNav && renderSideNav()}
 
       <main
-        className={`min-w-0 overflow-x-hidden ${
+        className={`flex-1 min-h-0 min-w-0 flex flex-col overflow-y-auto ${
           showChrome && isSideNav ? "md:ms-64" : ""
         }`}
       >
@@ -2178,19 +2447,19 @@ function AppInner({
                 <img
                   src={logoDisplayUrl}
                   alt="logo"
-                  className="w-12 h-12 rounded-2xl object-contain bg-white p-1"
+                  className="w-9 h-9 rounded-lg object-contain bg-white p-0.5"
                 />
               ) : (
                 <div
-                  className="w-12 h-12 rounded-2xl flex items-center justify-center"
+                  className="w-9 h-9 rounded-lg flex items-center justify-center"
                   style={{ background: "var(--brand-gradient)" }}
                 >
-                  <Plane className="w-6 h-6 text-white" />
+                  <Plane className="w-4 h-4 text-white" />
                 </div>
               )}
               <div className="flex-1 min-w-0">
                 <div
-                  className="font-black text-xl font-mono tracking-widest"
+                  className="font-black text-base font-mono tracking-widest"
                   style={{ color: "var(--text-primary)" }}
                 >
                   {operatorCode}
@@ -2236,10 +2505,10 @@ function AppInner({
               </div>
               <button
                 onClick={() => setDrawerOpen(false)}
-                className="w-10 h-10 rounded-xl flex items-center justify-center"
+                className="w-8 h-8 rounded-lg flex items-center justify-center"
                 style={{ backgroundColor: "var(--bg-app)" }}
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 

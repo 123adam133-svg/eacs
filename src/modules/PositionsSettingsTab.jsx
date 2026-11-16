@@ -12,6 +12,7 @@ import {
   Lock,
   GripVertical,
   RotateCcw,
+  Info,
 } from "lucide-react";
 import { Field } from "../components/ui/Field";
 import { Input } from "../components/ui/Input";
@@ -163,59 +164,49 @@ export function PositionsSettingsTab({
   };
 
   return (
-    <div className="space-y-4 max-w-4xl fade-in">
-      {/* ═══ Header ═══ */}
+    <div className="w-full grid grid-cols-1 lg:grid-cols-12 gap-3 items-start fade-in">
+      {/* ═══ Compact Header + Actions ═══ */}
       <div
-        className="p-4 rounded-2xl text-white shadow-md-theme"
+        className="lg:col-span-12 p-3 rounded-xl text-white shadow-md-theme flex flex-wrap items-center justify-between gap-2.5"
         style={{ background: "var(--brand-gradient)" }}
       >
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm">
-            <GripVertical className="w-7 h-7" />
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center backdrop-blur-sm shrink-0">
+            <GripVertical className="w-4 h-4" />
           </div>
           <div>
-            <h3 className="text-lg font-bold">
-              {lang === "ar" ? "الوظائف" : "Positions"}
+            <h3 className="text-sm font-bold leading-tight">
+              {lang === "ar" ? "إدارة الوظائف" : "Positions Management"}
             </h3>
-            <div className="text-xs opacity-80">
+            <div className="text-[11px] opacity-85">
               {positions.length} {lang === "ar" ? "وظيفة" : "positions"} ·{" "}
               {customCount} {lang === "ar" ? "مخصصة" : "custom"} · {lockedCount}{" "}
               {lang === "ar" ? "مقفلة" : "locked"}
             </div>
           </div>
         </div>
+
+        <div className="flex flex-wrap items-center gap-1.5">
+          <button
+            onClick={resetToDefault}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold bg-white/15 hover:bg-white/25 text-white transition"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            {lang === "ar" ? "استعادة الافتراضي" : "Reset Defaults"}
+          </button>
+          <button
+            onClick={addNew}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-white text-slate-900 hover:bg-slate-100 transition shadow-sm"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            {lang === "ar" ? "إضافة وظيفة" : "Add Position"}
+          </button>
+        </div>
       </div>
 
-      {/* ═══ Actions ═══ */}
-      <div className="flex flex-wrap gap-2">
-        <button
-          onClick={addNew}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold text-white transition hover:-translate-y-0.5"
-          style={{
-            background: "var(--brand-gradient)",
-            boxShadow: "var(--shadow-md)",
-          }}
-        >
-          <Plus className="w-4 h-4" />
-          {lang === "ar" ? "إضافة وظيفة" : "Add Position"}
-        </button>
-        <button
-          onClick={resetToDefault}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition"
-          style={{
-            backgroundColor: "var(--bg-card)",
-            color: "var(--text-primary)",
-            border: "1px solid var(--border-default)",
-          }}
-        >
-          <RotateCcw className="w-4 h-4" />
-          {lang === "ar" ? "استعادة الافتراضي" : "Reset Defaults"}
-        </button>
-      </div>
-
-      {/* ═══ Table ═══ */}
-      <div className="rounded-2xl overflow-hidden" style={cardStyle}>
-        <table className="w-full text-sm">
+      {/* ═══ Table (9 cols) ═══ */}
+      <div className="lg:col-span-9 rounded-xl overflow-x-auto" style={cardStyle}>
+        <table className="w-full text-xs">
           <thead
             style={{
               backgroundColor: "var(--bg-app)",
@@ -463,32 +454,42 @@ export function PositionsSettingsTab({
         </table>
       </div>
 
-      {/* ═══ Save All ═══ */}
-      <button
-        onClick={saveAll}
-        disabled={saving}
-        className="w-full px-4 py-3 disabled:opacity-50 text-white rounded-xl text-sm flex items-center justify-center gap-2 font-bold transition hover:-translate-y-0.5"
-        style={{
-          background: "var(--brand-gradient)",
-          boxShadow: "var(--shadow-md)",
-        }}
-      >
-        <Save className="w-4 h-4" />
-        {saving ? "…" : lang === "ar" ? "حفظ الوظائف" : "Save Positions"}
-      </button>
+      {/* ═══ Side Save & Summary Column (3 cols) ═══ */}
+      <div className="lg:col-span-3 space-y-3">
+        <div className="p-3.5 rounded-xl space-y-3" style={cardStyle}>
+          <div className="text-xs font-bold" style={{ color: "var(--text-primary)" }}>
+            {lang === "ar" ? "حفظ واعتماد الوظائف" : "Publish Positions"}
+          </div>
+          <button
+            onClick={saveAll}
+            disabled={saving}
+            className="w-full px-4 py-2.5 disabled:opacity-50 text-white rounded-xl text-xs flex items-center justify-center gap-2 font-bold transition"
+            style={{
+              background: "var(--brand-gradient)",
+              boxShadow: "var(--shadow-md)",
+            }}
+          >
+            <Save className="w-4 h-4" />
+            {saving ? "…" : lang === "ar" ? "حفظ الوظائف" : "Save Positions"}
+          </button>
+        </div>
 
-      <div
-        className="p-3 rounded-xl text-xs"
-        style={{
-          backgroundColor: "rgba(245, 158, 11, 0.15)",
-          border: "1px solid rgba(245, 158, 11, 0.4)",
-          color: "#f59e0b",
-        }}
-      >
-        💡 <b>{lang === "ar" ? "ملاحظة:" : "Note:"}</b>{" "}
-        {lang === "ar"
-          ? "الوظائف المضافة ستظهر فوراً في قائمة Add Position عند تعديل رحلة، وستُضاف كعمود في Table View عند تعيين عضو."
-          : "New positions will appear immediately in the Add Position dropdown when editing a flight, and as a new column in Table View when assigned."}
+        <div
+          className="p-3 rounded-xl text-xs flex items-start gap-2 leading-relaxed"
+          style={{
+            backgroundColor: "rgba(245, 158, 11, 0.12)",
+            border: "1px solid rgba(245, 158, 11, 0.35)",
+            color: "#d97706",
+          }}
+        >
+          <Info className="w-4 h-4 shrink-0 mt-0.5" />
+          <div>
+            <b>{lang === "ar" ? "ملاحظة:" : "Note:"}</b>{" "}
+            {lang === "ar"
+              ? "الوظائف المضافة ستظهر فوراً في قائمة Add Position عند تعديل رحلة، وستُضاف كعمود في Table View عند تعيين عضو."
+              : "New positions will appear immediately in the Add Position dropdown when editing a flight, and as a new column in Table View when assigned."}
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -49,6 +49,7 @@ import {
 } from "../api";
 import { generateManualPDF, downloadPDF, openPDF } from "../utils/pdf";
 import { showToast, confirmAction, printHTMLContent, openPreviewModal } from "../utils/dialog";
+import { generateSystemGuidePdf } from "../utils/systemGuidePdf";
 
 /* ⭐ Time Ago */
 function timeAgo(dateString, lang = "en") {
@@ -919,16 +920,16 @@ export function ManualsModule({
     <div className="space-y-4">
       {/* Header */}
       <div className="flex flex-wrap gap-3 items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 via-sky-600 to-blue-700 flex items-center justify-center shadow-lg text-white">
-            <BookOpen className="w-6 h-6" />
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 via-sky-600 to-blue-700 flex items-center justify-center shadow-sm text-white shrink-0">
+            <BookOpen className="w-4 h-4" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-lg font-bold font-mono tracking-wider">
+              <h2 className="text-base font-bold font-mono tracking-wider">
                 MANUALS
               </h2>
-              <span className="text-xs px-2 py-0.5 rounded-full bg-sky-100 dark:bg-sky-950 text-sky-700 dark:text-sky-300 font-bold">
+              <span className="text-xs px-2 py-0.5 rounded-full bg-sky-100 dark:bg-sky-950 text-sky-700 dark:text-sky-300 font-bold tabular-nums">
                 {filtered.length} / {manuals.length}
               </span>
             </div>
@@ -940,35 +941,62 @@ export function ManualsModule({
           </div>
         </div>
 
-        {canManage && (
-          <div className="flex items-center gap-2 flex-wrap">
-            <button
-              onClick={() => {
-                setShowAuditLog(true);
-                loadAuditLogs();
-              }}
-              className="flex items-center gap-2 px-3 py-2 bg-slate-700 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold"
-            >
-              <History className="w-3.5 h-3.5" /> السجل
-            </button>
-            <button
-              onClick={handleRefreshAll}
-              disabled={refreshingAll || filtered.length === 0}
-              className="flex items-center gap-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-semibold disabled:opacity-50"
-            >
-              <RefreshCw
-                className={`w-3.5 h-3.5 ${refreshingAll ? "animate-spin" : ""}`}
-              />
-              تحديث الكل ({filtered.length})
-            </button>
-            <button
-              onClick={handleOpenAdd}
-              className="flex items-center gap-2 px-3 py-2 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-xs font-semibold"
-            >
-              <Plus className="w-3.5 h-3.5" /> إضافة
-            </button>
-          </div>
-        )}
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            type="button"
+            disabled={isGeneratingPdf}
+            onClick={async () => {
+              setIsGeneratingPdf(true);
+              try {
+                await generateSystemGuidePdf({
+                  settings: { companyName },
+                  lang: "ar",
+                  mode: "download",
+                });
+                showToast("تم تحميل ملف دليل عمل ومزايا النظام (PDF)", "success");
+              } catch (err) {
+                showToast("تعذر إنشاء الدليل: " + err.message, "error");
+              } finally {
+                setIsGeneratingPdf(false);
+              }
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold disabled:opacity-50"
+            title="تحميل دليل عمل ومزايا النظام بالكامل PDF"
+          >
+            <FileDown className="w-3.5 h-3.5" />
+            <span>{isGeneratingPdf ? "جاري التصدير..." : "دليل النظام (PDF)"}</span>
+          </button>
+
+          {canManage && (
+            <>
+              <button
+                onClick={() => {
+                  setShowAuditLog(true);
+                  loadAuditLogs();
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-700 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold"
+              >
+                <History className="w-3.5 h-3.5" /> السجل
+              </button>
+              <button
+                onClick={handleRefreshAll}
+                disabled={refreshingAll || filtered.length === 0}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold disabled:opacity-50"
+              >
+                <RefreshCw
+                  className={`w-3.5 h-3.5 ${refreshingAll ? "animate-spin" : ""}`}
+                />
+                تحديث الكل ({filtered.length})
+              </button>
+              <button
+                onClick={handleOpenAdd}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-sky-600 hover:bg-sky-700 text-white rounded-lg text-xs font-semibold"
+              >
+                <Plus className="w-3.5 h-3.5" /> إضافة
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Search + Filter */}

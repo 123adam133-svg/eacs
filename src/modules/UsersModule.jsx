@@ -15,6 +15,10 @@ import {
   UserPlus,
   Lock,
   Shield,
+  X,
+  Star,
+  Zap,
+  Check,
 } from "lucide-react";
 import { useT, useAuth } from "../contexts";
 import { Field } from "../components/ui/Field";
@@ -198,15 +202,15 @@ export function UsersModule({
   return (
     <div className="space-y-3">
       {/* ═══ Header ═══ */}
-      <div className="bg-gradient-to-r from-slate-800 to-slate-700 rounded-xl p-4 text-white shadow-lg">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-white/20 rounded-lg flex items-center justify-center">
-              <Shield className="w-7 h-7" />
+      <div className="bg-gradient-to-r from-slate-800 to-slate-700 rounded-xl p-3 text-white shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-2.5">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center shrink-0">
+              <Shield className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="text-xl font-bold">{t.userMgmt}</h2>
-              <div className="text-xs text-slate-300">
+              <h2 className="text-base font-bold leading-tight">{t.userMgmt}</h2>
+              <div className="text-[11px] text-slate-300">
                 {users.length} {t.totalUsers} · {roles.length} {t.totalRoles}
               </div>
             </div>
@@ -254,9 +258,9 @@ export function UsersModule({
               setSearch("");
               setRoleFilter("");
             }}
-            className="px-3 py-2 rounded-lg bg-rose-100 dark:bg-rose-950 hover:bg-rose-200 text-rose-700 dark:text-rose-300 text-xs font-bold"
+            className="inline-flex items-center gap-1 px-3 py-2 rounded-lg bg-rose-100 dark:bg-rose-950 hover:bg-rose-200 text-rose-700 dark:text-rose-300 text-xs font-bold"
           >
-            ✖ {t.clear}
+            <X className="w-3.5 h-3.5" /> {t.clear}
           </button>
         )}
       </div>
@@ -302,7 +306,7 @@ export function UsersModule({
                     {/* User info */}
                     <td className="px-3 py-3">
                       <div className="flex items-center gap-2">
-                        <div className="w-10 h-10 rounded-full overflow-hidden bg-slate-100 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 flex-shrink-0">
+                        <div className="w-8 h-8 rounded-full overflow-hidden bg-slate-100 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 flex-shrink-0">
                           {toDisplayImageUrl(u.avatar) ? (
                             <img
                               src={toDisplayImageUrl(u.avatar)}
@@ -310,7 +314,7 @@ export function UsersModule({
                               className="w-full h-full object-cover"
                             />
                           ) : (
-                            <User className="w-full h-full p-2 text-slate-400" />
+                            <User className="w-full h-full p-1.5 text-slate-400" />
                           )}
                         </div>
                         <div className="min-w-0">
@@ -351,17 +355,23 @@ export function UsersModule({
                     <td className="px-3 py-3 text-center">
                       <div className="flex flex-col items-center gap-0.5">
                         <span
-                          className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold ${
                             hasOverride
                               ? "bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 border border-amber-300"
                               : "bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-300"
                           }`}
                         >
-                          {permCount === "ALL" ? "⭐ ALL" : permCount}
+                          {permCount === "ALL" ? (
+                            <>
+                              <Star className="w-3 h-3" /> ALL
+                            </>
+                          ) : (
+                            permCount
+                          )}
                         </span>
                         {hasOverride ? (
-                          <span className="text-[9px] text-amber-600 dark:text-amber-400 font-bold">
-                            ⚡ {t.override}
+                          <span className="inline-flex items-center gap-0.5 text-[9px] text-amber-600 dark:text-amber-400 font-bold">
+                            <Zap className="w-2.5 h-2.5" /> {t.override}
                           </span>
                         ) : (
                           <span className="text-[9px] text-slate-400">
@@ -376,7 +386,7 @@ export function UsersModule({
                       <button
                         onClick={() => toggleActive(u)}
                         disabled={isSelf}
-                        className={`px-2 py-0.5 rounded-full text-xs font-bold border ${
+                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold border ${
                           u.active
                             ? "bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border-emerald-300"
                             : "bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400 border-slate-300 dark:border-slate-600"
@@ -386,7 +396,15 @@ export function UsersModule({
                             : "cursor-not-allowed"
                         }`}
                       >
-                        {u.active ? `✓ ${t.active}` : `✗ ${t.inactive}`}
+                        {u.active ? (
+                          <>
+                            <Check className="w-3 h-3" /> {t.active}
+                          </>
+                        ) : (
+                          <>
+                            <X className="w-3 h-3" /> {t.inactive}
+                          </>
+                        )}
                       </button>
                     </td>
 
@@ -540,8 +558,8 @@ export function UsersModule({
                     setDraft({ ...draft, active: e.target.value === "true" })
                   }
                 >
-                  <option value="true">✓ {t.active}</option>
-                  <option value="false">✗ {t.inactive}</option>
+                  <option value="true">{t.active}</option>
+                  <option value="false">{t.inactive}</option>
                 </Select>
               </Field>
             </div>
@@ -567,7 +585,7 @@ export function UsersModule({
                       <option key={r.id} value={r.name}>
                         {lang === "ar" ? r.nameAr : r.name}
                         {safeArray(r.perms).includes("*")
-                          ? " ⭐"
+                          ? " (ALL)"
                           : ` (${getRolePermissions(r.name).length})`}
                       </option>
                     ))}
@@ -583,8 +601,8 @@ export function UsersModule({
                     const rp = getRolePermissions(draft.role);
                     if (rp.includes("*"))
                       return (
-                        <span className="text-xs font-bold text-rose-600">
-                          ⭐ {t.allPermissions}
+                        <span className="inline-flex items-center gap-1 text-xs font-bold text-rose-600">
+                          <Star className="w-3.5 h-3.5" /> {t.allPermissions}
                         </span>
                       );
                     if (rp.length === 0)
@@ -633,8 +651,8 @@ export function UsersModule({
                   }}
                   className="w-4 h-4 accent-amber-600"
                 />
-                <span className="text-xs font-bold text-amber-800 dark:text-amber-200">
-                  ⚡ {t.overrideRolePerms}
+                <span className="inline-flex items-center gap-1 text-xs font-bold text-amber-800 dark:text-amber-200">
+                  <Zap className="w-3.5 h-3.5" /> {t.overrideRolePerms}
                 </span>
               </label>
 

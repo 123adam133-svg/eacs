@@ -6,10 +6,50 @@
 import { daysUntil } from "./helpers";
 import { safeArray } from "./safe";
 
+const LOCAL_DISMISSED_ALERTS_KEY = "aeroops.locallyDismissedAlerts";
+export const ALERTS_DISMISSED_EVENT = "aeroops:alerts-dismissed-changed";
+
+export function readLocallyDismissedAlerts() {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(LOCAL_DISMISSED_ALERTS_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter(Boolean).map(String) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function writeLocallyDismissedAlerts(keys = []) {
+  const unique = Array.from(new Set((keys || []).filter(Boolean).map(String)));
+  if (typeof window !== "undefined") {
+    try {
+      window.localStorage.setItem(LOCAL_DISMISSED_ALERTS_KEY, JSON.stringify(unique));
+    } catch {}
+    window.dispatchEvent(new CustomEvent(ALERTS_DISMISSED_EVENT, { detail: unique }));
+  }
+  return unique;
+}
+
+export function dismissAlertsLocally(keysToAdd) {
+  const list = Array.isArray(keysToAdd) ? keysToAdd : [keysToAdd];
+  return writeLocallyDismissedAlerts([...readLocallyDismissedAlerts(), ...list]);
+}
+
+export function undismissAlertLocally(keyToRemove) {
+  if (!keyToRemove) return readLocallyDismissedAlerts();
+  return writeLocallyDismissedAlerts(
+    readLocallyDismissedAlerts().filter((k) => String(k) !== String(keyToRemove))
+  );
+}
+
 export function computeAlerts(crew = [], users = [], fleet = []) {
   const alerts = [];
 
-  const scan = (item, source) => {
+  const scan = (item, source, itemIdx = 0) => {
+    const itemKeyBase =
+      item.reg || item.id || item.empNo || item.fullName || item.name || `idx_${itemIdx}`;
+
     const checks = [
       { k: "medicalExpiry", label: "Medical" },
       { k: "licenseExpiry", label: "License" },
@@ -32,7 +72,7 @@ export function computeAlerts(crew = [], users = [], fleet = []) {
 
       if (sev) {
         alerts.push({
-          key: `${source}_${item.reg || item.id}_${k}`,
+          key: `${source}_${itemKeyBase}_${k}`,
           sev,
           subject: item.fullName || item.reg || item.name || "—",
           source,
@@ -55,7 +95,7 @@ export function computeAlerts(crew = [], users = [], fleet = []) {
 
       if (sev) {
         alerts.push({
-          key: `${source}_${item.reg || item.id}_att_${a.id || idx}`,
+          key: `${source}_${itemKeyBase}_att_${a.id || idx}`,
           sev,
           subject: item.fullName || item.reg || item.name || "—",
           source,
@@ -67,9 +107,9 @@ export function computeAlerts(crew = [], users = [], fleet = []) {
     });
   };
 
-  safeArray(crew).forEach((c) => scan(c, "crew"));
-  safeArray(users).forEach((u) => scan(u, "user"));
-  safeArray(fleet).forEach((a) => scan(a, "aircraft"));
+  safeArray(crew).forEach((c, idx) => scan(c, "crew", idx));
+  safeArray(users).forEach((u, idx) => scan(u, "user", idx));
+  safeArray(fleet).forEach((a, idx) => scan(a, "aircraft", idx));
 
   return alerts.sort((a, b) => a.days - b.days);
 }

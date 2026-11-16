@@ -1,8 +1,9 @@
 /* ═══════════════════════════════════════════════════════════
- * USER PROFILE MODAL — Read-Only
- * عرض معلومات المستخدم + الملفات المرفقة (بدون تعديل)
+ * USER PROFILE MODAL — Full-Page Compact, Clean & Theme-Aware View
+ * Displays user identity, aviation credentials, crew qualifications,
+ * and attached documents with theme-aware styling (light/dark support).
  * ═══════════════════════════════════════════════════════════ */
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   X,
   User,
@@ -20,11 +21,15 @@ import {
   Hash,
   Paperclip,
   Image as ImageIcon,
+  CheckCircle2,
+  AlertCircle,
+  Plane,
+  Building2,
 } from "lucide-react";
 import { useT } from "../contexts";
 import { getRoleLabel, getRoleIcon, getRoleColor } from "../config/permissions";
 import { PdfCanvasViewer } from "./ui/PdfCanvasViewer";
-import { toDisplayImageUrl, toPreviewFileUrl, toDownloadFileUrl } from "../api";
+import { toDisplayImageUrl, toDownloadFileUrl } from "../api";
 
 function normalizeAttachments(val) {
   if (!val) return [];
@@ -58,9 +63,7 @@ const fmtDate = (iso) => {
     "Nov",
     "Dec",
   ];
-  return `${String(d.getUTCDate()).padStart(2, "0")}-${
-    months[d.getUTCMonth()]
-  }-${d.getUTCFullYear()}`;
+  return `${String(d.getUTCDate()).padStart(2, "0")}-${months[d.getUTCMonth()]}-${d.getUTCFullYear()}`;
 };
 
 const formatFileSize = (bytes) => {
@@ -74,23 +77,40 @@ export function UserProfileModal({ user, crew, settings, onClose }) {
   const t = useT();
   const lang = document.documentElement.lang || "en";
   const isRTL = lang === "ar";
-
   const [previewDoc, setPreviewDoc] = useState(null);
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === "Escape") {
+        if (previewDoc) {
+          setPreviewDoc(null);
+        } else {
+          onClose?.();
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [previewDoc, onClose]);
 
   if (!user) return null;
 
-  /* ═══ Related crew data (if user is linked to crew member) ═══ */
-  const linkedCrew = crew?.find((c) => String(c.id) === String(user.crewId));
+  /* ═══ Related crew member ═══ */
+  const linkedCrew = crew?.find(
+    (c) =>
+      String(c.id) === String(user.crewId) ||
+      (c.empNo && user.username && String(c.empNo).replace(/^#/, "") === String(user.username)) ||
+      (c.email && user.email && c.email.toLowerCase() === user.email.toLowerCase())
+  );
 
-  /* ═══ Attachments — من user أو crew ═══ */
+  /* ═══ Attachments — Merged from User + Crew ═══ */
   const attachments = useMemo(() => {
     const fromUser = normalizeAttachments(user.attachments);
     const fromCrew = normalizeAttachments(linkedCrew?.attachments);
-    // دمج + إزالة التكرار
     const all = [...fromUser, ...fromCrew];
     const seen = new Set();
     return all.filter((a) => {
-      const key = a.url || a.name;
+      const key = a.url || a.fileUrl || a.name;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
@@ -101,13 +121,14 @@ export function UserProfileModal({ user, crew, settings, onClose }) {
   const roleColor = getRoleColor(user.role);
   const roleIcon = getRoleIcon(user.role);
   const roleLabel = getRoleLabel(user.role, isRTL ? "ar" : "en");
+  const operatorCode = settings?.companyCode || "5A-GAK";
 
-  /* ═══ Info rows ═══ */
-  const infoRows = [
+  /* ═══ Basic Info Fields ═══ */
+  const basicInfo = [
     {
       icon: User,
       label: isRTL ? "الاسم الكامل" : "Full Name",
-      value: user.fullName || "—",
+      value: user.fullName || user.name || "—",
     },
     {
       icon: Hash,
@@ -118,15 +139,13 @@ export function UserProfileModal({ user, crew, settings, onClose }) {
     {
       icon: Briefcase,
       label: isRTL ? "المسمى الوظيفي" : "Job Title",
-      value: user.jobTitle || "—",
+      value: user.jobTitle || linkedCrew?.role || "—",
     },
     {
       icon: Shield,
-      label: isRTL ? "الدور" : "Role",
+      label: isRTL ? "الدور والصلاحيات" : "Role & Access",
       value: (
-        <span
-          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold border ${roleColor}`}
-        >
+        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold border ${roleColor}`}>
           <span>{roleIcon}</span>
           {roleLabel}
         </span>
@@ -135,416 +154,434 @@ export function UserProfileModal({ user, crew, settings, onClose }) {
     {
       icon: Mail,
       label: isRTL ? "البريد الإلكتروني" : "Email",
-      value: user.email || "—",
+      value: user.email || linkedCrew?.email || "—",
       link: user.email ? `mailto:${user.email}` : null,
+      mono: true,
     },
     {
       icon: Phone,
-      label: isRTL ? "الهاتف" : "Phone",
-      value: user.phone || "—",
+      label: isRTL ? "رقم الهاتف" : "Phone",
+      value: user.phone || linkedCrew?.phone || "—",
       link: user.phone ? `tel:${user.phone}` : null,
+      mono: true,
     },
     {
       icon: Calendar,
-      label: isRTL ? "تاريخ الانضمام" : "Joined",
-      value: user.createdAt ? fmtDate(user.createdAt) : "—",
+      label: isRTL ? "تاريخ الإنشاء / الانضمام" : "Joined Date",
+      value: fmtDate(user.createdAt || linkedCrew?.joinDate),
+      mono: true,
+    },
+    {
+      icon: Building2,
+      label: isRTL ? "رمز المشغل / الشركة" : "Operator Code",
+      value: operatorCode,
+      mono: true,
     },
   ];
 
-  /* ═══ Crew extra info (if linked) ═══ */
-  const crewExtraInfo = linkedCrew
+  /* ═══ Crew / Operational Info Fields ═══ */
+  const crewInfo = linkedCrew
     ? [
         {
-          label: isRTL ? "الرقم الوظيفي" : "Employee No",
-          value: linkedCrew.empNo || "—",
+          label: isRTL ? "رمز الطاقم (Emp No)" : "Crew Code",
+          value: linkedCrew.empNo || `#${linkedCrew.id}`,
+          mono: true,
         },
         {
-          label: isRTL ? "الرخصة" : "License",
-          value: linkedCrew.licenseNo || "—",
+          label: isRTL ? "الرتبة / الوظيفة" : "Rank / Role",
+          value: linkedCrew.role || linkedCrew.rank || "—",
         },
         {
-          label: isRTL ? "انتهاء الرخصة" : "License Expiry",
-          value: linkedCrew.licenseExpiry
-            ? fmtDate(linkedCrew.licenseExpiry)
-            : "—",
-        },
-        {
-          label: isRTL ? "انتهاء الطبية" : "Medical Expiry",
-          value: linkedCrew.medicalExpiry
-            ? fmtDate(linkedCrew.medicalExpiry)
-            : "—",
-        },
-        {
-          label: isRTL ? "الجواز" : "Passport",
-          value: linkedCrew.passportNo || "—",
+          label: isRTL ? "المحطة الرئيسية (Base)" : "Base Station",
+          value: linkedCrew.base || "HLLM (Tripoli)",
+          mono: true,
         },
         {
           label: isRTL ? "الجنسية" : "Nationality",
-          value: linkedCrew.nationality || "—",
+          value: linkedCrew.nationality || "Libyan",
         },
         {
-          label: isRTL ? "القاعدة" : "Base",
-          value: linkedCrew.base || "—",
+          label: isRTL ? "رقم الجواز" : "Passport Number",
+          value: linkedCrew.passportNo || "—",
+          mono: true,
+        },
+        {
+          label: isRTL ? "انتهاء الجواز" : "Passport Expiry",
+          value: fmtDate(linkedCrew.passportExpiry),
+          mono: true,
+        },
+        {
+          label: isRTL ? "رقم رخصة الطيران" : "License Number",
+          value: linkedCrew.licenseNo || "—",
+          mono: true,
+        },
+        {
+          label: isRTL ? "انتهاء الشهادة الطبية" : "Medical Expiry",
+          value: fmtDate(linkedCrew.medicalExpiry),
+          mono: true,
         },
       ]
     : [];
 
   return (
     <div
-      className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4"
+      className="fixed inset-0 z-[100] flex flex-col bg-slate-900/40 dark:bg-slate-950/70 backdrop-blur-xs p-2 sm:p-4 overflow-hidden animate-in fade-in duration-150 font-sans"
       onClick={onClose}
     >
       <div
-        className="bg-white dark:bg-slate-800 rounded-2xl w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden"
+        className="w-full h-full max-w-7xl mx-auto bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl flex flex-col shadow-2xl overflow-hidden text-slate-900 dark:text-slate-100"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* ═══ HEADER ═══ */}
-        <div
-          className="p-5 flex items-start gap-4 text-white relative"
-          style={{ background: "var(--brand-gradient)" }}
-        >
-          {/* Avatar */}
-          <div className="w-16 h-16 rounded-full bg-white/20 backdrop-blur flex items-center justify-center text-2xl font-bold flex-shrink-0">
-            {toDisplayImageUrl(user.avatar) ? (
-              <img
-                src={toDisplayImageUrl(user.avatar)}
-                alt={user.fullName}
-                className="w-full h-full rounded-full object-cover"
-              />
-            ) : (
-              (user.fullName || user.username || "?")[0].toUpperCase()
-            )}
-          </div>
-
-          {/* Name + Role */}
-          <div className="flex-1 min-w-0">
-            <h2 className="text-xl font-bold truncate">
-              {user.fullName || user.username || "User"}
-            </h2>
-            <div className="flex items-center gap-2 mt-1 flex-wrap">
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/20 text-xs font-bold">
-                <span>{roleIcon}</span>
-                {roleLabel}
-              </span>
-              {user.active !== false && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/30 text-xs font-bold">
-                  ✅ {isRTL ? "نشط" : "Active"}
-                </span>
-              )}
-              {user.active === false && (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-500/30 text-xs font-bold">
-                  ⛔ {isRTL ? "موقوف" : "Inactive"}
+        {/* ═══ FULL-PAGE HEADER BAR ═══ */}
+        <div className="p-3.5 sm:p-4 bg-[#1b365d] text-white flex items-center justify-between border-b border-[#142947] shrink-0">
+          <div className="flex items-center gap-3.5 min-w-0">
+            {/* User Avatar */}
+            <div className="w-9 h-9 rounded-lg bg-white/10 border border-white/20 flex items-center justify-center text-base font-bold shrink-0 overflow-hidden shadow-inner">
+              {toDisplayImageUrl(user.avatar) ? (
+                <img
+                  src={toDisplayImageUrl(user.avatar)}
+                  alt={user.fullName}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <span className="text-sky-300">
+                  {(user.fullName || user.username || "?")[0].toUpperCase()}
                 </span>
               )}
             </div>
-            {user.jobTitle && (
-              <div className="text-xs opacity-80 mt-1">{user.jobTitle}</div>
-            )}
+
+            {/* User Title & Info */}
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="text-base sm:text-lg font-bold truncate text-white">
+                  {user.fullName || user.username || "User"}
+                </h1>
+                <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-sky-900/80 border border-sky-600/50 text-sky-200">
+                  {operatorCode}
+                </span>
+                {user.active !== false ? (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold">
+                    <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                    <span>{isRTL ? "حساب نشط" : "Active"}</span>
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30 text-[10px] font-bold">
+                    <AlertCircle className="w-3 h-3 text-rose-400" />
+                    <span>{isRTL ? "موقوف" : "Inactive"}</span>
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2 text-xs text-sky-200/80 mt-0.5 flex-wrap">
+                <span className="font-mono text-sky-300">@{user.username}</span>
+                {user.jobTitle && <span>· {user.jobTitle}</span>}
+                {linkedCrew && (
+                  <span className="text-emerald-300">
+                    · {isRTL ? "عضو طاقم مسجل" : "Registered Crew"} ({linkedCrew.empNo || linkedCrew.role})
+                  </span>
+                )}
+              </div>
+            </div>
           </div>
 
-          {/* Close */}
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-white/20 transition flex-shrink-0"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          {/* Close button */}
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-lg hover:bg-white/10 text-slate-300 hover:text-white transition"
+              aria-label="Close"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
-        {/* ═══ BODY — Scrollable ═══ */}
-        <div className="flex-1 overflow-y-auto p-5 space-y-5">
-          {/* 🔒 Read-Only Note */}
-          <div className="p-2.5 rounded-lg text-xs flex items-center gap-2 bg-amber-500/15 border border-amber-500/40 text-amber-500">
-            <Lock className="w-4 h-4 flex-shrink-0" />
-            {isRTL
-              ? "وضع العرض فقط — لتعديل المعلومات، تواصل مع المسؤول."
-              : "View-only mode — to edit info, contact administrator."}
-          </div>
+        {/* ═══ FULL-PAGE COMPACT 3-COLUMN CONTENT ═══ */}
+        <div className="flex-1 overflow-y-auto p-3 sm:p-4 bg-slate-50 dark:bg-slate-900/60">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5 h-full">
+            {/* ── COLUMN 1: BASIC INFORMATION (4 cols) ── */}
+            <div className="lg:col-span-4 bg-white dark:bg-slate-950/70 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 flex flex-col justify-between shadow-xs">
+              <div>
+                <div className="flex items-center justify-between pb-2 mb-3 border-b border-slate-200 dark:border-slate-800">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                    <User className="w-4 h-4 text-sky-500" />
+                    <span>{isRTL ? "المعلومات الأساسية" : "Basic Information"}</span>
+                  </h3>
+                  <span className="text-[10px] text-slate-400 font-mono">ID: {user.id || user.uid}</span>
+                </div>
 
-          {/* ═══ Basic Info ═══ */}
-          <section>
-            <h3
-              className="text-sm font-bold mb-3 flex items-center gap-2"
-              style={{ color: "var(--text-primary)" }}
-            >
-              <User
-                className="w-4 h-4"
-                style={{ color: "var(--brand-primary)" }}
-              />
-              {isRTL ? "المعلومات الأساسية" : "Basic Information"}
-            </h3>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {infoRows.map((row, idx) => {
-                const Icon = row.icon;
-                return (
-                  <div
-                    key={idx}
-                    className="p-3 rounded-lg flex items-center gap-3"
-                    style={{
-                      backgroundColor: "var(--bg-app)",
-                      border: "1px solid var(--border-default)",
-                    }}
-                  >
-                    <Icon
-                      className="w-4 h-4 flex-shrink-0"
-                      style={{ color: "var(--text-muted)" }}
-                    />
-                    <div className="flex-1 min-w-0">
+                <div className="space-y-2">
+                  {basicInfo.map((row, idx) => {
+                    const Icon = row.icon;
+                    return (
                       <div
-                        className="text-[10px] uppercase font-bold"
-                        style={{ color: "var(--text-muted)" }}
+                        key={idx}
+                        className="p-2 rounded-lg bg-slate-50 dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-800/80 flex items-center gap-2.5 text-xs"
                       >
-                        {row.label}
+                        <div className="w-6 h-6 rounded-md bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-500 shrink-0">
+                          <Icon className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-[9px] uppercase font-bold text-slate-500 dark:text-slate-400">
+                            {row.label}
+                          </div>
+                          <div className={`font-semibold text-slate-800 dark:text-slate-200 truncate ${row.mono ? "font-mono" : ""}`}>
+                            {row.link ? (
+                              <a
+                                href={row.link}
+                                className="text-sky-600 dark:text-sky-400 hover:underline decoration-dotted"
+                              >
+                                {row.value}
+                              </a>
+                            ) : (
+                              row.value
+                            )}
+                          </div>
+                        </div>
                       </div>
-                      <div
-                        className={`text-sm font-semibold truncate ${
-                          row.mono ? "font-mono" : ""
-                        }`}
-                        style={{ color: "var(--text-primary)" }}
-                      >
-                        {row.link ? (
-                          <a
-                            href={row.link}
-                            className="hover:underline"
-                            style={{ color: "var(--brand-primary)" }}
-                          >
-                            {row.value}
-                          </a>
-                        ) : (
-                          row.value
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-
-          {/* ═══ Crew Info (if linked) ═══ */}
-          {linkedCrew && crewExtraInfo.length > 0 && (
-            <section>
-              <h3
-                className="text-sm font-bold mb-3 flex items-center gap-2"
-                style={{ color: "var(--text-primary)" }}
-              >
-                <Award
-                  className="w-4 h-4"
-                  style={{ color: "var(--brand-primary)" }}
-                />
-                {isRTL ? "معلومات الطاقم" : "Crew Information"}
-              </h3>
-
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                {crewExtraInfo.map((row, idx) => (
-                  <div
-                    key={idx}
-                    className="p-2.5 rounded-lg"
-                    style={{
-                      backgroundColor: "var(--bg-app)",
-                      border: "1px solid var(--border-default)",
-                    }}
-                  >
-                    <div
-                      className="text-[10px] uppercase font-bold"
-                      style={{ color: "var(--text-muted)" }}
-                    >
-                      {row.label}
-                    </div>
-                    <div
-                      className="text-xs font-semibold mt-0.5"
-                      style={{ color: "var(--text-primary)" }}
-                    >
-                      {row.value}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
-
-          {/* ═══ Attachments ═══ */}
-          <section>
-            <h3
-              className="text-sm font-bold mb-3 flex items-center gap-2"
-              style={{ color: "var(--text-primary)" }}
-            >
-              <Paperclip
-                className="w-4 h-4"
-                style={{ color: "var(--brand-primary)" }}
-              />
-              {isRTL ? "الملفات المرفقة" : "Attached Files"}
-              <span
-                className="px-2 py-0.5 rounded-full text-[10px] font-bold"
-                style={{
-                  backgroundColor: "var(--bg-app)",
-                  color: "var(--brand-primary)",
-                }}
-              >
-                {attachments.length}
-              </span>
-            </h3>
-
-            {attachments.length === 0 ? (
-              <div
-                className="p-8 text-center rounded-xl border-2 border-dashed"
-                style={{
-                  borderColor: "var(--border-default)",
-                  color: "var(--text-muted)",
-                }}
-              >
-                <Paperclip className="w-10 h-10 mx-auto mb-2 opacity-30" />
-                <div className="text-sm">
-                  {isRTL ? "لا توجد ملفات مرفقة" : "No attached files"}
+                    );
+                  })}
                 </div>
               </div>
-            ) : (
-              <div className="space-y-2">
-                {attachments.map((doc, idx) => {
-                  const name = doc.name || doc.fileName || `File ${idx + 1}`;
-                  const url = doc.url || doc.fileUrl || doc.data || "";
-                  const size = doc.size ? formatFileSize(doc.size) : "";
-                  const type = doc.type || doc.mimeType || "";
 
-                  return (
-                    <div
-                      key={idx}
-                      className="p-3 rounded-lg flex items-center gap-3"
-                      style={{
-                        backgroundColor: "var(--bg-app)",
-                        border: "1px solid var(--border-default)",
-                      }}
-                    >
-                      {/* Icon */}
-                      <div
-                        className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
-                        style={{ backgroundColor: "rgba(168, 85, 247, 0.15)" }}
-                      >
-                        {type?.startsWith("image/") ? (
-                          <ImageIcon className="w-5 h-5 text-purple-500" />
-                        ) : (
-                          <FileText className="w-5 h-5 text-purple-500" />
-                        )}
-                      </div>
-
-                      {/* Info */}
-                      <div className="flex-1 min-w-0">
-                        <div
-                          className="font-bold text-sm truncate"
-                          style={{ color: "var(--text-primary)" }}
-                          title={name}
-                        >
-                          {name}
-                        </div>
-                        <div
-                          className="text-[10px] flex gap-2"
-                          style={{ color: "var(--text-muted)" }}
-                        >
-                          {type && <span className="font-mono">{type}</span>}
-                          {size && <span>· {size}</span>}
-                        </div>
-                      </div>
-
-                      {/* Actions — View + Download only */}
-                      {url ? (
-                        <div className="flex gap-1 flex-shrink-0">
-                          <button
-                            onClick={() => setPreviewDoc({ name, url, type })}
-                            className="w-8 h-8 rounded-lg flex items-center justify-center transition hover:bg-blue-500/20"
-                            style={{ color: "var(--brand-primary)" }}
-                            title={isRTL ? "عرض" : "View"}
-                          >
-                            <Eye className="w-4 h-4" />
-                          </button>
-                          <a
-                            href={toDownloadFileUrl(url, name)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            download={name}
-                            className="w-8 h-8 rounded-lg flex items-center justify-center transition hover:bg-emerald-500/20"
-                            style={{ color: "var(--text-muted)" }}
-                            title={isRTL ? "تحميل" : "Download"}
-                          >
-                            <Download className="w-4 h-4" />
-                          </a>
-                        </div>
-                      ) : (
-                        <span
-                          className="text-[10px] italic"
-                          style={{ color: "var(--text-muted)" }}
-                        >
-                          {isRTL ? "رابط غير متاح" : "No link"}
-                        </span>
-                      )}
-                    </div>
-                  );
-                })}
+              {/* View-only notice */}
+              <div className="mt-3 p-2 rounded-lg bg-slate-100 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 text-[10px] text-slate-500 flex items-center gap-2">
+                <Lock className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                <span>
+                  {isRTL
+                    ? "عرض فقط — لتعديل البيانات اتصل بمسؤول المنظومة"
+                    : "View-only — contact system admin to modify details"}
+                </span>
               </div>
-            )}
-          </section>
+            </div>
+
+            {/* ── COLUMN 2: CREW & OPERATIONAL QUALIFICATIONS (4 cols) ── */}
+            <div className="lg:col-span-4 bg-white dark:bg-slate-950/70 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 flex flex-col justify-between shadow-xs">
+              <div>
+                <div className="flex items-center justify-between pb-2 mb-3 border-b border-slate-200 dark:border-slate-800">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                    <Award className="w-4 h-4 text-emerald-500" />
+                    <span>{isRTL ? "بيانات الطاقم والاعتمادات" : "Crew & Qualifications"}</span>
+                  </h3>
+                  {linkedCrew && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 font-mono font-bold">
+                      {linkedCrew.role || "CREW"}
+                    </span>
+                  )}
+                </div>
+
+                {linkedCrew ? (
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      {crewInfo.map((item, idx) => (
+                        <div
+                          key={idx}
+                          className="p-2 rounded-lg bg-slate-50 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 text-xs"
+                        >
+                          <div className="text-[9px] uppercase font-bold text-slate-500 dark:text-slate-400 truncate">
+                            {item.label}
+                          </div>
+                          <div className={`font-semibold text-slate-800 dark:text-slate-200 mt-0.5 truncate ${item.mono ? "font-mono" : ""}`}>
+                            {item.value}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Aircraft Type Ratings */}
+                    {Array.isArray(linkedCrew.aircraft) && linkedCrew.aircraft.length > 0 && (
+                      <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 text-xs mt-2">
+                        <div className="text-[9px] uppercase font-bold text-slate-500 dark:text-slate-400 mb-1.5 flex items-center gap-1">
+                          <Plane className="w-3 h-3 text-sky-500" />
+                          <span>{isRTL ? "الطائرات المؤهل عليها (Type Ratings):" : "Qualified Aircraft:"}</span>
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {linkedCrew.aircraft.map((ac, idx) => (
+                            <span
+                              key={idx}
+                              className="px-2 py-0.5 rounded bg-sky-500/10 border border-sky-500/30 text-sky-700 dark:text-sky-300 font-mono text-[10px] font-bold"
+                            >
+                              {ac}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="h-48 flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 p-4 text-center">
+                    <Award className="w-10 h-10 mb-2 opacity-30" />
+                    <p className="text-xs font-semibold">{isRTL ? "غير مربوط بسجل طاقم جوي" : "Not linked to a crew record"}</p>
+                    <p className="text-[10px] text-slate-500 mt-1">
+                      {isRTL
+                        ? "هذا الحساب مخصص للمستخدمين الإداريين أو الموظفين الأرضيين"
+                        : "This account is configured for administrative or ground personnel"}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Status summary */}
+              {linkedCrew && (
+                <div className="mt-3 p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-[10px] text-emerald-700 dark:text-emerald-400 flex items-center gap-2 font-medium">
+                  <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-emerald-500" />
+                  <span>
+                    {isRTL
+                      ? "عضو طاقم مسجل ومرخص للعمليات الميدانية والجوية"
+                      : "Verified crew member licensed for flight operations"}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* ── COLUMN 3: ATTACHED DOCUMENTS & FILES (4 cols) ── */}
+            <div className="lg:col-span-4 bg-white dark:bg-slate-950/70 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 flex flex-col justify-between shadow-xs">
+              <div className="flex-1 flex flex-col min-h-0">
+                <div className="flex items-center justify-between pb-2 mb-3 border-b border-slate-200 dark:border-slate-800 shrink-0">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                    <Paperclip className="w-4 h-4 text-purple-500" />
+                    <span>{isRTL ? "الملفات والوثائق المرفقة" : "Attached Documents"}</span>
+                  </h3>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-500/30">
+                    {attachments.length} {isRTL ? "ملف" : "files"}
+                  </span>
+                </div>
+
+                {attachments.length === 0 ? (
+                  <div className="flex-1 flex flex-col items-center justify-center p-6 text-slate-400 dark:text-slate-500 text-center">
+                    <Paperclip className="w-10 h-10 mb-2 opacity-30" />
+                    <p className="text-xs font-semibold">{isRTL ? "لا توجد ملفات مرفقة" : "No attached documents"}</p>
+                    <p className="text-[10px] text-slate-500 mt-1">
+                      {isRTL ? "لم يتم إرفاق جوازات أو رخص أو شهادات لهذا الحساب" : "No passports or certificates attached"}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="flex-1 overflow-y-auto space-y-2 pe-1 max-h-[460px]">
+                    {attachments.map((doc, idx) => {
+                      const name = doc.name || doc.fileName || `Document ${idx + 1}`;
+                      const url = doc.url || doc.fileUrl || doc.data || "";
+                      const size = doc.size ? formatFileSize(doc.size) : "";
+                      const type = doc.type || doc.mimeType || "";
+                      const isImg = type.startsWith("image/") || /\.(png|jpe?g|webp|gif|svg)$/i.test(name);
+
+                      return (
+                        <div
+                          key={idx}
+                          className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2.5 hover:border-purple-500/40 transition group"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="w-8 h-8 rounded-lg bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-600 dark:text-purple-400 shrink-0">
+                              {isImg ? <ImageIcon className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate group-hover:text-purple-600 dark:group-hover:text-purple-300 transition" title={name}>
+                                {name}
+                              </div>
+                              <div className="text-[10px] text-slate-500 font-mono">
+                                {size || "PDF/File"}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Action Buttons: Preview & Download */}
+                          {url ? (
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                onClick={() => setPreviewDoc({ name, url, type })}
+                                className="p-1.5 rounded-lg bg-white dark:bg-slate-800 hover:bg-purple-500/15 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:text-purple-600 transition"
+                                title={isRTL ? "معاينة الملف" : "Preview"}
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                              </button>
+
+                              <a
+                                href={toDownloadFileUrl(url, name)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                download={name}
+                                className="p-1.5 rounded-lg bg-white dark:bg-slate-800 hover:bg-emerald-500/15 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:text-emerald-600 transition"
+                                title={isRTL ? "تحميل" : "Download"}
+                              >
+                                <Download className="w-3.5 h-3.5" />
+                              </a>
+                            </div>
+                          ) : (
+                            <span className="text-[10px] text-slate-400 italic">{isRTL ? "غير متاح" : "N/A"}</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
 
-        {/* ═══ FOOTER ═══ */}
-        <div
-          className="p-3 border-t flex justify-end"
-          style={{ borderColor: "var(--border-default)" }}
-        >
+        {/* ═══ FULL-PAGE FOOTER ═══ */}
+        <div className="p-3 bg-slate-100 dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs text-slate-600 dark:text-slate-400 shrink-0">
+          <div className="flex items-center gap-2 text-[11px]">
+            <CheckCircle2 className="w-3.5 h-3.5 text-sky-500 shrink-0" />
+            <span>
+              {isRTL
+                ? "عرض شامل ومصغر لكافة البيانات الشخصية والمهنية والملفات المرفقة"
+                : "Comprehensive compact view of user credentials & attached documents"}
+            </span>
+          </div>
+
           <button
             onClick={onClose}
-            className="px-4 py-2 rounded-lg text-sm font-bold border transition hover:bg-slate-50 dark:hover:bg-slate-700"
-            style={{
-              borderColor: "var(--border-default)",
-              color: "var(--text-muted)",
-            }}
+            className="px-5 py-1.5 rounded-lg bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-semibold transition text-xs"
           >
             {isRTL ? "إغلاق" : "Close"}
           </button>
         </div>
       </div>
 
-      {/* ═══ File Preview Modal ═══ */}
+      {/* ═══ FILE PREVIEW MODAL ═══ */}
       {previewDoc && (
         <div
-          className="fixed inset-0 z-[110] flex items-center justify-center p-4"
-          style={{ backgroundColor: "rgba(0,0,0,0.9)" }}
+          className="fixed inset-0 z-[120] flex items-center justify-center p-3 sm:p-6 bg-slate-900/60 dark:bg-black/80 backdrop-blur-xs animate-in fade-in duration-100"
           onClick={() => setPreviewDoc(null)}
         >
           <div
-            className="rounded-2xl w-full max-w-4xl h-[85vh] flex flex-col overflow-hidden"
-            style={{
-              backgroundColor: "var(--bg-card)",
-              border: "2px solid var(--brand-primary)",
-            }}
+            className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl w-full max-w-5xl h-[88vh] flex flex-col shadow-2xl overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
-            <div
-              className="p-3 flex items-center justify-between text-white"
-              style={{ background: "var(--brand-gradient)" }}
-            >
+            <div className="p-3 bg-[#1b365d] text-white flex items-center justify-between border-b border-[#142947] shrink-0">
               <div className="flex items-center gap-2 min-w-0">
-                <FileText className="w-5 h-5 flex-shrink-0" />
-                <span className="font-bold text-sm truncate">
-                  {previewDoc.name}
-                </span>
+                <FileText className="w-4 h-4 text-purple-300 shrink-0" />
+                <span className="font-bold text-xs sm:text-sm truncate text-white">{previewDoc.name}</span>
               </div>
-              <button
-                onClick={() => setPreviewDoc(null)}
-                className="p-1.5 rounded-lg hover:bg-white/20 transition flex-shrink-0"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-2 shrink-0">
+                <a
+                  href={toDownloadFileUrl(previewDoc.url, previewDoc.name)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  download={previewDoc.name}
+                  className="p-1 rounded hover:bg-white/10 text-slate-300 hover:text-white transition"
+                  title="Download"
+                >
+                  <Download className="w-4 h-4" />
+                </a>
+                <button
+                  onClick={() => setPreviewDoc(null)}
+                  className="p-1 rounded hover:bg-white/10 text-slate-300 hover:text-white transition"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
-            {/* Body */}
-            <div className="flex-1 bg-gray-100 dark:bg-gray-900 relative">
+
+            {/* Document Viewer Body */}
+            <div className="flex-1 bg-slate-50 dark:bg-slate-950 relative overflow-hidden flex items-center justify-center">
               {(previewDoc.type?.startsWith("image/") ||
                 /\.(png|jpe?g|webp|gif|svg)$/i.test(previewDoc.name || "")) &&
               toDisplayImageUrl(previewDoc.url) ? (
                 <img
                   src={toDisplayImageUrl(previewDoc.url)}
                   alt={previewDoc.name}
-                  className="w-full h-full object-contain"
+                  className="max-w-full max-h-full object-contain p-2"
                 />
               ) : previewDoc.url ? (
                 <PdfCanvasViewer
@@ -555,7 +592,7 @@ export function UserProfileModal({ user, crew, settings, onClose }) {
                   className="w-full h-full border-0"
                 />
               ) : (
-                <div className="w-full h-full flex items-center justify-center p-6 text-sm text-slate-500">
+                <div className="p-6 text-sm text-slate-500">
                   {isRTL ? "لا يتوفر رابط صالح لمعاينة هذا المرفق" : "No valid preview URL available"}
                 </div>
               )}

@@ -92,18 +92,18 @@ export const FLIGHT_STATUSES = [
     dot: "#0284c7",
   },
   {
+    key: "CONFIRMED",
+    en: "Confirmed",
+    ar: "مؤكدة",
+    color: "bg-cyan-100 text-cyan-700 border-cyan-300",
+    dot: "#0891b2",
+  },
+  {
     key: "BOARDING",
     en: "Boarding",
     ar: "صعود",
     color: "bg-amber-100 text-amber-700 border-amber-300",
     dot: "#f59e0b",
-  },
-  {
-    key: "DELAYED",
-    en: "Delayed",
-    ar: "متأخرة",
-    color: "bg-orange-100 text-orange-700 border-orange-300",
-    dot: "#f97316",
   },
   {
     key: "DEPARTED",
@@ -113,11 +113,25 @@ export const FLIGHT_STATUSES = [
     dot: "#6366f1",
   },
   {
+    key: "IN_FLIGHT",
+    en: "In Flight",
+    ar: "في الجو",
+    color: "bg-blue-100 text-blue-700 border-blue-300",
+    dot: "#2563eb",
+  },
+  {
     key: "ARRIVED",
     en: "Arrived",
     ar: "وصلت",
     color: "bg-emerald-100 text-emerald-700 border-emerald-300",
     dot: "#22c55e",
+  },
+  {
+    key: "DELAYED",
+    en: "Delayed",
+    ar: "متأخرة",
+    color: "bg-orange-100 text-orange-700 border-orange-300",
+    dot: "#f97316",
   },
   {
     key: "CANCELLED",
@@ -251,7 +265,60 @@ export const POSITION_ROLE_MAP = {
 export function getAllowedRoles(positionKey) {
   if (!positionKey) return [];
   if (POSITION_ROLE_MAP[positionKey]) return POSITION_ROLE_MAP[positionKey];
+  const pKey = String(positionKey).toLowerCase();
+  for (const [k, roles] of Object.entries(POSITION_ROLE_MAP)) {
+    if (k.toLowerCase() === pKey || roles.some((r) => r.toLowerCase() === pKey)) {
+      return roles;
+    }
+  }
   return [positionKey];
+}
+
+export function getCrewAssignedAircrafts(member) {
+  if (!member) return [];
+  const raw = member.assignedAircraft ?? member.assignedAircrafts ?? member.aircraft;
+  if (Array.isArray(raw)) return raw.map((s) => String(s).trim()).filter(Boolean);
+  if (typeof raw === "string" && raw.trim()) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed.map((s) => String(s).trim()).filter(Boolean);
+    } catch {
+      return raw.split(",").map((s) => s.trim()).filter(Boolean);
+    }
+  }
+  return [];
+}
+
+export function getMemberAllRoles(member) {
+  if (!member) return [];
+  const roles = new Set();
+  if (member.role) roles.add(member.role);
+  let sec = member.secondaryRoles;
+  if (Array.isArray(sec)) {
+    sec.forEach((r) => r && roles.add(r));
+  } else if (typeof sec === "string" && sec.trim()) {
+    try {
+      const parsed = JSON.parse(sec);
+      if (Array.isArray(parsed)) parsed.forEach((r) => r && roles.add(r));
+    } catch {
+      sec.split(",").forEach((r) => r && roles.add(r.trim()));
+    }
+  }
+  return Array.from(roles);
+}
+
+export function isCrewQualifiedForAircraft(member, aircraftReg) {
+  if (!member) return false;
+  if (!aircraftReg || !String(aircraftReg).trim()) return true;
+  const primaryRole = String(member.role || "").toLowerCase().trim();
+  if (primaryRole === "flightdispatcher" || primaryRole === "dispatcher" || primaryRole === "security") {
+    return true;
+  }
+  const assigned = getCrewAssignedAircrafts(member).map((a) =>
+    String(a).trim().toUpperCase()
+  );
+  if (assigned.length === 0) return false;
+  return assigned.includes(String(aircraftReg).trim().toUpperCase());
 }
 
 /* ⭐ CREW_ROLE_ICONS */

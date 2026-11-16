@@ -1,127 +1,193 @@
 /* ═══════════════════════════════════════════════════════════
- * COMPLETE FLIGHT WORKSPACE — Full-Page 24-Hour Journey Log
- * - Full-screen (100vw × 100vh) operational layout
- * - Strict 24-hour (00:00 – 23:59) UTC inputs via Time24Input
- * - Live Block Time, Airborne Flight Time (T/O -> LDG), Night Time,
- *   Fuel Auto-Calculation, and Crew Auto-Resolution
+ * COMPLETE FLIGHT WORKSPACE — Clean & Simple Journey Log
+ * - Compact layout: COPY DATA FROM FW + BLOFF/T/O/LDG/BLON + Fuel + OPTIONAL JL FIELDS
+ * - Auto Night Time computed from Sunset while Airborne (T/O → LDG) with quick-pick menu
+ * - Live searchable IATA Delay Code dropdown & minutes input
  * ═══════════════════════════════════════════════════════════ */
-import { showToast } from "../utils/dialog";
 import React, { useState, useEffect, useMemo } from "react";
 import {
   X,
   Save,
-  Clock,
-  Plane,
-  Fuel,
-  Users,
-  Sliders,
-  ArrowDownToLine,
-  CheckCircle2,
+  Trash2,
+  ClipboardCheck,
+  RefreshCw,
 } from "lucide-react";
 import { useT } from "../contexts";
-import { Field } from "./ui/Field";
-import { Input } from "./ui/Input";
-import { Select } from "./ui/Select";
 import { Time24Input } from "./ui/Time24Input";
-
-function calcDuration24(startHHMM, endHHMM) {
-  if (!startHHMM || !endHHMM) return { hhmm: "00:00", minutes: 0 };
-  const [sh, sm] = String(startHHMM).split(":").map(Number);
-  const [eh, em] = String(endHHMM).split(":").map(Number);
-  if ([sh, sm, eh, em].some((n) => Number.isNaN(n))) {
-    return { hhmm: "00:00", minutes: 0 };
-  }
-  let min = eh * 60 + em - (sh * 60 + sm);
-  if (min < 0) min += 24 * 60;
-  const h = Math.floor(min / 60);
-  const m = min % 60;
-  return {
-    hhmm: `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`,
-    minutes: min,
-  };
-}
+import { DelayCodeInput } from "./DelayCodeInput";
+import { NightTimeInput } from "./NightTimeInput";
+import { showToast, confirmAction } from "../utils/dialog";
+import {
+  calcDuration24,
+  calcAirborneNightMinutes,
+  minutesToHHMM,
+  hhmmToMinutes,
+} from "../utils/flightTiming";
 
 export function CompleteFlightModal({
   flight,
   onClose,
   onSave,
+  onDelete,
   fleet = [],
   crew = [],
+  initialLegIdx = -1,
 }) {
   const t = useT();
+  const isAr = true;
   const [saving, setSaving] = useState(false);
+  const [activeLegIdx, setActiveLegIdx] = useState(initialLegIdx);
 
-  const defaultDepDate = flight?.std ? String(flight.std).slice(0, 10) : new Date().toISOString().slice(0, 10);
-  const defaultArrDate = flight?.sta ? String(flight.sta).slice(0, 10) : defaultDepDate;
+  useEffect(() => {
+    setActiveLegIdx(typeof initialLegIdx === "number" ? initialLegIdx : -1);
+  }, [flight?.id, initialLegIdx]);
+
+  const legs = Array.isArray(flight?.legs) ? flight.legs : [];
+  const activeLeg =
+    activeLegIdx >= 0 && legs[activeLegIdx] ? legs[activeLegIdx] : null;
+  const isMainSector = !activeLeg;
+
+  const sectorFlightNo = isMainSector
+    ? flight?.flightNo
+    : activeLeg.flightNo || flight?.flightNo;
+  const sectorDep = isMainSector ? flight?.dep : activeLeg.dep;
+  const sectorArr = isMainSector ? flight?.arr : activeLeg.arr;
+  const sectorAcft = isMainSector
+    ? flight?.acft
+    : activeLeg.acft || flight?.acft;
+  const sectorBaseDate = isMainSector
+    ? flight?.std
+      ? String(flight.std).slice(0, 10)
+      : flight?.date || new Date().toISOString().slice(0, 10)
+    : activeLeg.date ||
+      (activeLeg.std ? String(activeLeg.std).slice(0, 10) : "") ||
+      (flight?.std ? String(flight.std).slice(0, 10) : "") ||
+      new Date().toISOString().slice(0, 10);
+
+  const normalizeIsoDt = (val, baseDateStr) => {
+    if (!val) return "";
+    const s = String(val).trim();
+    if (s.includes("T")) return s;
+    if (/^\d{2}:\d{2}$/.test(s)) return `${baseDateStr}T${s}:00Z`;
+    return s;
+  };
+
+  const sectorStdIso = normalizeIsoDt(
+    isMainSector ? flight?.std : activeLeg.std,
+    sectorBaseDate
+  );
+  const sectorStaIso = normalizeIsoDt(
+    isMainSector ? flight?.sta : activeLeg.sta,
+    sectorBaseDate
+  );
+  const sectorActual = isMainSector ? flight?.actual || {} : activeLeg.actual || {};
+  const sectorStatus = isMainSector
+    ? flight?.status || "ARRIVED"
+    : activeLeg.status || "ARRIVED";
+  const sectorCrewSlots = isMainSector
+    ? Array.isArray(flight?.crewSlots)
+      ? flight.crewSlots
+      : []
+    : Array.isArray(activeLeg.crewSlots)
+    ? activeLeg.crewSlots
+    : Array.isArray(flight?.crewSlots)
+    ? flight.crewSlots
+    : [];
+
+  const defaultDepDate = sectorStdIso
+    ? String(sectorStdIso).slice(0, 10)
+    : sectorBaseDate;
+  const defaultArrDate = sectorStaIso
+    ? String(sectorStaIso).slice(0, 10)
+    : defaultDepDate;
 
   const [depDate, setDepDate] = useState(defaultDepDate);
   const [arrDate, setArrDate] = useState(defaultArrDate);
 
   const [draft, setDraft] = useState({
-    actual: flight?.actual || {},
-    status: flight?.status || "ARRIVED",
+    actual: sectorActual,
+    status: sectorStatus,
   });
 
-  // Resolve assigned Captain & First Officer names from flight.crewSlots if available
   const resolvedCrewDefaults = useMemo(() => {
-    const slots = Array.isArray(flight?.crewSlots) ? flight.crewSlots : [];
+    const slots = sectorCrewSlots;
     const findName = (positions) => {
       const slot = slots.find((s) => positions.includes(s.position));
       if (!slot) return "";
-      const member = (crew || []).find((c) => String(c.id) === String(slot.crewId));
+      const member = (crew || []).find(
+        (c) => String(c.id) === String(slot.crewId)
+      );
       return member?.fullName || "";
     };
     return {
       pic: findName(["captain", "CPT", "tri"]),
       sic: findName(["firstOfficer", "FO"]),
     };
-  }, [flight, crew]);
+  }, [sectorCrewSlots, crew]);
 
   useEffect(() => {
     if (flight) {
-      const dDate = flight.actual?.std
-        ? String(flight.actual.std).slice(0, 10)
-        : flight.std
-        ? String(flight.std).slice(0, 10)
-        : new Date().toISOString().slice(0, 10);
-      const aDate = flight.actual?.sta
-        ? String(flight.actual.sta).slice(0, 10)
-        : flight.sta
-        ? String(flight.sta).slice(0, 10)
-        : dDate;
+      const dDate = sectorActual?.std
+        ? String(sectorActual.std).slice(0, 10)
+        : defaultDepDate;
+      const aDate = sectorActual?.sta
+        ? String(sectorActual.sta).slice(0, 10)
+        : defaultArrDate;
 
       setDepDate(dDate);
       setArrDate(aDate);
 
-      const existing = flight.actual || {};
+      const existing = sectorActual || {};
+      const initMode =
+        existing.nightMode ||
+        (Number(existing.night) > 0 ? "manual" : "auto");
       setDraft({
         actual: {
-          std: existing.std || flight.std || "",
-          sta: existing.sta || flight.sta || "",
+          std: existing.std || sectorStdIso || "",
+          sta: existing.sta || sectorStaIso || "",
           takeoff: existing.takeoff || "",
           landing: existing.landing || "",
           pic: existing.pic || resolvedCrewDefaults.pic || "",
           sic: existing.sic || resolvedCrewDefaults.sic || "",
           picFlying: existing.picFlying ?? false,
-          pilotMonitoring:
-            existing.pilotMonitoring || resolvedCrewDefaults.sic || "",
-          blockFuel: existing.blockFuel ?? 0,
-          fuelUsed: existing.fuelUsed ?? 0,
-          fuelRemaining: existing.fuelRemaining ?? 0,
-          uplift: existing.uplift ?? 0,
+          pilotMonitoring: existing.pilotMonitoring ?? "",
+          blockFuel: existing.blockFuel ?? "",
+          fuelUsed: existing.fuelUsed ?? "",
+          fuelRemaining: existing.fuelRemaining ?? "",
+          fuelUnit: existing.fuelUnit || "lbs",
+          uplift: existing.uplift ?? "",
+          upliftUnit: existing.upliftUnit || "lbs",
           night: existing.night ?? 0,
+          nightTime: existing.nightTime || minutesToHHMM(existing.night ?? 0),
+          nightMode: initMode,
           instrument: existing.instrument ?? 0,
           delayCode: existing.delayCode || "",
+          delayMinutes: existing.delayMinutes ?? "",
           restFacility: existing.restFacility || "Suitable",
+          paxCount:
+            existing.paxCount ??
+            (isMainSector ? flight?.pax : activeLeg?.pax) ??
+            "",
+          childrenCount: existing.childrenCount ?? "",
+          infantsCount: existing.infantsCount ?? "",
+          bagsCount: existing.bagsCount ?? "",
+          cargoWeight:
+            existing.cargoWeight ??
+            (isMainSector ? flight?.cargo : activeLeg?.cargo) ??
+            "",
+          flightLogRef: existing.flightLogRef || "",
+          discretionExtension: Boolean(existing.discretionExtension),
           notes: existing.notes || "",
         },
         status:
-          flight.status && flight.status !== "SCHEDULED" && flight.status !== "DEPARTED"
-            ? flight.status
+          sectorStatus &&
+          sectorStatus !== "SCHEDULED" &&
+          sectorStatus !== "DEPARTED"
+            ? sectorStatus
             : "ARRIVED",
       });
     }
-  }, [flight, resolvedCrewDefaults]);
+  }, [flight, activeLegIdx, resolvedCrewDefaults]);
 
   useEffect(() => {
     const handleEsc = (e) => {
@@ -149,14 +215,20 @@ export function CompleteFlightModal({
     upd(field, `${cleanDate}T${hhmm}:00Z`);
   };
 
-  const handleFuelChange = (field, numVal) => {
+  const handleFuelChange = (field, rawVal) => {
+    const numVal = rawVal === "" ? "" : Number(rawVal);
     setDraft((d) => {
       const nextActual = { ...(d.actual || {}), [field]: numVal };
       if (field === "blockFuel" || field === "fuelUsed") {
-        const bf = Number(nextActual.blockFuel) || 0;
-        const fu = Number(nextActual.fuelUsed) || 0;
-        if (bf >= fu) {
-          nextActual.fuelRemaining = bf - fu;
+        const bf = Number(nextActual.blockFuel);
+        const fu = Number(nextActual.fuelUsed);
+        if (
+          nextActual.blockFuel !== "" &&
+          nextActual.fuelUsed !== "" &&
+          !Number.isNaN(bf) &&
+          !Number.isNaN(fu)
+        ) {
+          nextActual.fuelRemaining = Math.max(0, bf - fu);
         }
       }
       return { ...d, actual: nextActual };
@@ -164,21 +236,34 @@ export function CompleteFlightModal({
   };
 
   const copyFromFW = () => {
-    const dDate = flight.std ? String(flight.std).slice(0, 10) : depDate;
-    const aDate = flight.sta ? String(flight.sta).slice(0, 10) : arrDate;
+    const dDate = sectorStdIso ? String(sectorStdIso).slice(0, 10) : depDate;
+    const aDate = sectorStaIso ? String(sectorStaIso).slice(0, 10) : arrDate;
     setDepDate(dDate);
     setArrDate(aDate);
+
+    const stdHH = sectorStdIso ? String(sectorStdIso).slice(11, 16) : "12:00";
+    const staHH = sectorStaIso ? String(sectorStaIso).slice(11, 16) : "13:30";
+    const [sh, sm] = stdHH.split(":").map(Number);
+    const [eh, em] = staHH.split(":").map(Number);
+    let toMin = (sh || 0) * 60 + (sm || 0) + 10;
+    let ldgMin = (eh || 0) * 60 + (em || 0) - 6;
+    if (ldgMin < toMin) ldgMin = toMin + 30;
+    const toHH = minutesToHHMM(toMin % 1440);
+    const ldgHH = minutesToHHMM(ldgMin % 1440);
+
     setDraft((d) => ({
       ...d,
       actual: {
         ...(d.actual || {}),
-        std: flight.std || "",
-        sta: flight.sta || "",
+        std: sectorStdIso || `${dDate}T${stdHH}:00Z`,
+        sta: sectorStaIso || `${aDate}T${staHH}:00Z`,
+        takeoff: d.actual?.takeoff || `${dDate}T${toHH}:00Z`,
+        landing: d.actual?.landing || `${aDate}T${ldgHH}:00Z`,
         pic: d.actual?.pic || resolvedCrewDefaults.pic || "",
         sic: d.actual?.sic || resolvedCrewDefaults.sic || "",
       },
     }));
-    showToast("✅ تم نسخ التوقيت المجدول (24h UTC) وطاقم الرحلة", "success");
+    showToast("تم نسخ بيانات الرحلة المجدولة (UTC)", "success");
   };
 
   const bloffHHMM = draft.actual?.std ? String(draft.actual.std).slice(11, 16) : "";
@@ -188,430 +273,644 @@ export function CompleteFlightModal({
 
   const blockDur = calcDuration24(bloffHHMM, blonHHMM);
   const flightDur = calcDuration24(toHHMM, ldgHHMM);
-  const estNightMin = draft.actual?.night || Math.round(blockDur.minutes * 0.2);
-  const estNightHHMM = `${String(Math.floor(estNightMin / 60)).padStart(
-    2,
-    "0"
-  )}:${String(estNightMin % 60).padStart(2, "0")}`;
+  const acftObj = (fleet || []).find((a) => a.reg === sectorAcft);
 
-  const acftObj = (fleet || []).find((a) => a.reg === flight.acft);
+  const autoNightCalc = useMemo(
+    () =>
+      calcAirborneNightMinutes({
+        depCode: sectorDep,
+        arrCode: sectorArr,
+        dateStr: depDate || sectorBaseDate,
+        toHHMM,
+        ldgHHMM,
+        bloffHHMM,
+        blonHHMM,
+      }),
+    [sectorDep, sectorArr, depDate, sectorBaseDate, toHHMM, ldgHHMM, bloffHHMM, blonHHMM]
+  );
+
+  const nightMode = draft.actual?.nightMode || "auto";
+  const effectiveNightMin =
+    nightMode === "auto"
+      ? autoNightCalc.minutes
+      : nightMode === "flight_time"
+      ? flightDur.minutes
+      : nightMode === "full_block"
+      ? blockDur.minutes
+      : Number(draft.actual?.night ?? 0);
+  const effectiveNightHHMM = minutesToHHMM(effectiveNightMin);
+
+  useEffect(() => {
+    if (nightMode === "auto") {
+      setDraft((d) => {
+        if (
+          d.actual?.night === autoNightCalc.minutes &&
+          d.actual?.nightTime === autoNightCalc.hhmm
+        ) {
+          return d;
+        }
+        return {
+          ...d,
+          actual: {
+            ...(d.actual || {}),
+            night: autoNightCalc.minutes,
+            nightTime: autoNightCalc.hhmm,
+          },
+        };
+      });
+    } else if (nightMode === "flight_time") {
+      setDraft((d) => {
+        if (
+          d.actual?.night === flightDur.minutes &&
+          d.actual?.nightTime === flightDur.hhmm
+        ) {
+          return d;
+        }
+        return {
+          ...d,
+          actual: {
+            ...(d.actual || {}),
+            night: flightDur.minutes,
+            nightTime: flightDur.hhmm,
+          },
+        };
+      });
+    } else if (nightMode === "full_block") {
+      setDraft((d) => {
+        if (
+          d.actual?.night === blockDur.minutes &&
+          d.actual?.nightTime === blockDur.hhmm
+        ) {
+          return d;
+        }
+        return {
+          ...d,
+          actual: {
+            ...(d.actual || {}),
+            night: blockDur.minutes,
+            nightTime: blockDur.hhmm,
+          },
+        };
+      });
+    }
+  }, [
+    nightMode,
+    autoNightCalc.minutes,
+    autoNightCalc.hhmm,
+    flightDur.minutes,
+    flightDur.hhmm,
+    blockDur.minutes,
+    blockDur.hhmm,
+  ]);
+
+  const sunsetHint =
+    autoNightCalc?.source === "solar" && autoNightCalc?.depSun?.sunsetUtc
+      ? `Sunset ${sectorDep || ""}: ${autoNightCalc.depSun.sunsetUtc}z`
+      : "";
 
   const handleSave = async () => {
-    let stdValue = draft.actual?.std;
-    let staValue = draft.actual?.sta;
-
-    if (!stdValue || String(stdValue).trim() === "") {
-      stdValue = flight.std || "";
+    let stdValue = draft.actual?.std || sectorStdIso || "";
+    let staValue = draft.actual?.sta || sectorStaIso || "";
+    if (!String(stdValue).trim()) {
+      stdValue = new Date().toISOString().slice(0, 16) + ":00Z";
     }
-    if (!staValue || String(staValue).trim() === "") {
-      staValue = flight.sta || "";
-    }
-    if (!stdValue || String(stdValue).trim() === "") {
-      const now = new Date();
-      stdValue = now.toISOString().slice(0, 16) + ":00Z";
-    }
-    if (!staValue || String(staValue).trim() === "") {
-      const now = new Date();
-      staValue = now.toISOString().slice(0, 16) + ":00Z";
+    if (!String(staValue).trim()) {
+      staValue = new Date().toISOString().slice(0, 16) + ":00Z";
     }
 
-    const actualToSave = {
+    const savedActual = {
       ...draft.actual,
       std: stdValue,
       sta: staValue,
     };
+    const savedStatus = draft.status || "ARRIVED";
 
     setSaving(true);
     try {
-      await onSave({
-        ...flight,
-        actual: actualToSave,
-        status: draft.status || "ARRIVED",
-      });
+      if (isMainSector) {
+        await onSave({
+          ...flight,
+          actual: savedActual,
+          status: savedStatus,
+        });
+      } else {
+        const nextLegs = [...legs];
+        nextLegs[activeLegIdx] = {
+          ...nextLegs[activeLegIdx],
+          actual: savedActual,
+          status: savedStatus,
+        };
+        await onSave({
+          ...flight,
+          legs: nextLegs,
+        });
+      }
       onClose();
     } catch (e) {
       console.error("Save JL error:", e);
-      showToast("❌ فشل الحفظ: " + e.message, "error");
+      showToast("فشل الحفظ: " + (e?.message || e), "error");
     } finally {
       setSaving(false);
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-[200] w-screen h-screen flex flex-col overflow-hidden bg-slate-50 dark:bg-slate-950">
-      {/* ═══ FULL-PAGE STICKY TOP BAR ═══ */}
-      <header className="px-6 py-3.5 bg-slate-900 dark:bg-slate-900 border-b border-slate-800 text-white flex flex-wrap items-center justify-between gap-4 shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-emerald-600 flex items-center justify-center shrink-0">
-            <CheckCircle2 className="w-6 h-6 text-white" />
-          </div>
-          <div>
-            <div className="flex items-center gap-3">
-              <h2 className="text-lg font-bold tracking-tight">
-                إكمال الرحلة وسجل الرحلة الفعلي (Complete Flight — Journey Log)
-              </h2>
-              <span className="font-mono text-sm font-bold text-sky-400">
-                {flight.flightNo}
-              </span>
-            </div>
-            <div className="text-xs text-slate-300 font-mono tabular-nums flex items-center gap-2 mt-0.5">
-              <span>{flight.dep} → {flight.arr}</span>
-              <span>·</span>
-              <span>{flight.acft || "—"} {acftObj?.type ? `(${acftObj.type})` : ""}</span>
-              <span>·</span>
-              <span>Scheduled: {flight.std?.slice(11, 16) || "—"}Z → {flight.sta?.slice(11, 16) || "—"}Z (24H UTC)</span>
-            </div>
-          </div>
-        </div>
+  const fuelUnit = draft.actual?.fuelUnit || "lbs";
 
-        <div className="flex items-center gap-2.5 shrink-0">
-          <button
-            type="button"
-            onClick={copyFromFW}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold transition whitespace-nowrap shrink-0"
-          >
-            <ArrowDownToLine className="w-4 h-4" />
-            نسخ التوقيت المجدول (Copy Scheduled 24H)
-          </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saving}
-            className="flex items-center gap-1.5 px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition disabled:opacity-50 whitespace-nowrap shrink-0"
-          >
-            <Save className="w-4 h-4" />
-            {saving ? "جاري الحفظ..." : "حفظ سجل الرحلة (SAVE JL)"}
-          </button>
+  return (
+    <div
+      className="fixed inset-0 z-[200] flex items-center justify-center p-2 sm:p-4 backdrop-blur-xs"
+      style={{ backgroundColor: "rgba(0,0,0,0.65)" }}
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-xl max-h-[92vh] rounded-xl border shadow-2xl flex flex-col overflow-hidden"
+        style={{
+          backgroundColor: "var(--bg-card)",
+          borderColor: "var(--border-default)",
+          color: "var(--text-primary)",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* ═══ COMPACT HEADER ═══ */}
+        <header
+          className="px-3.5 py-2.5 border-b flex items-center justify-between gap-2 shrink-0"
+          style={{ borderColor: "var(--border-default)" }}
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-7 h-7 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0">
+              <ClipboardCheck className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-xs sm:text-sm font-bold truncate">
+                  الرحلة المكتملة · Journey Log
+                </h2>
+                <span className="text-xs font-mono font-bold text-sky-600 dark:text-sky-400">
+                  {sectorFlightNo} · {sectorDep} → {sectorArr}
+                </span>
+              </div>
+              <div
+                className="text-[10px] font-mono tabular-nums flex items-center gap-1.5"
+                style={{ color: "var(--text-muted)" }}
+              >
+                <span>{sectorAcft || "—"} {acftObj?.type ? `(${acftObj.type})` : ""}</span>
+                <span>·</span>
+                <span>{sectorBaseDate}</span>
+              </div>
+            </div>
+          </div>
+
           <button
             type="button"
             onClick={onClose}
-            className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white transition"
+            className="p-1 rounded-md border hover:opacity-80 transition shrink-0"
+            style={{
+              borderColor: "var(--border-default)",
+              color: "var(--text-muted)",
+            }}
             title="إغلاق (ESC)"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" />
           </button>
-        </div>
-      </header>
+        </header>
 
-      {/* ═══ FULL-PAGE SCROLLABLE WORKSPACE ═══ */}
-      <main className="flex-1 overflow-y-auto p-4 md:p-6">
-        <div className="max-w-7xl mx-auto space-y-5">
-          {/* KPI Live Summary Strip */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5">
-              <div className="text-xs text-slate-500 dark:text-slate-400">
-                المسار والقطاع / Sector
-              </div>
-              <div className="text-lg font-bold font-mono tabular-nums text-slate-900 dark:text-slate-100 mt-0.5">
-                {flight.dep} → {flight.arr}
-              </div>
-            </div>
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5">
-              <div className="text-xs text-slate-500 dark:text-slate-400">
-                زمن البلوك / Block Time (24H)
-              </div>
-              <div className="text-lg font-bold font-mono tabular-nums text-emerald-600 dark:text-emerald-400 mt-0.5">
-                {blockDur.hhmm}
-              </div>
-            </div>
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5">
-              <div className="text-xs text-slate-500 dark:text-slate-400">
-                زمن الطيران / Airborne (T/O–LDG)
-              </div>
-              <div className="text-lg font-bold font-mono tabular-nums text-sky-600 dark:text-sky-400 mt-0.5">
-                {toHHMM && ldgHHMM ? flightDur.hhmm : "—"}
-              </div>
-            </div>
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5">
-              <div className="text-xs text-slate-500 dark:text-slate-400">
-                الطيران الليلي / Night Time
-              </div>
-              <div className="text-lg font-bold font-mono tabular-nums text-indigo-600 dark:text-indigo-400 mt-0.5">
-                {estNightHHMM}
-              </div>
-            </div>
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 col-span-2 md:col-span-1">
-              <div className="text-xs text-slate-500 dark:text-slate-400">
-                حالة الرحلة النهائية / Status
-              </div>
-              <div className="mt-1">
-                <Select
-                  value={draft.status}
-                  onChange={(e) => setDraft({ ...draft, status: e.target.value })}
-                >
-                  <option value="ARRIVED">ARRIVED — وصلت / مكتملة ✓</option>
-                  <option value="DEPARTED">DEPARTED — غادرت</option>
-                  <option value="IN_FLIGHT">IN_FLIGHT — بالجو</option>
-                  <option value="BOARDING">BOARDING — صعود</option>
-                  <option value="SCHEDULED">SCHEDULED — مجدولة</option>
-                  <option value="DELAYED">DELAYED — متأخرة</option>
-                  <option value="CANCELLED">CANCELLED — ملغاة</option>
-                </Select>
-              </div>
-            </div>
+        {/* Sector Switcher when multi-sector */}
+        {legs.length > 0 && (
+          <div
+            className="px-3.5 py-1.5 border-b flex items-center gap-1.5 overflow-x-auto shrink-0"
+            style={{ backgroundColor: "var(--bg-app)", borderColor: "var(--border-default)" }}
+          >
+            <span className="text-[10px] font-bold shrink-0" style={{ color: "var(--text-muted)" }}>
+              السكتر:
+            </span>
+            <button
+              type="button"
+              onClick={() => setActiveLegIdx(-1)}
+              className={`px-2 py-0.5 rounded text-[11px] font-bold font-mono border shrink-0 transition ${
+                isMainSector
+                  ? "bg-sky-600 text-white border-sky-600"
+                  : "bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300"
+              }`}
+            >
+              S1 · {flight.dep || "—"}→{flight.arr || "—"}
+            </button>
+            {legs.map((lg, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => setActiveLegIdx(idx)}
+                className={`px-2 py-0.5 rounded text-[11px] font-bold font-mono border shrink-0 transition ${
+                  activeLegIdx === idx
+                    ? "bg-purple-600 text-white border-purple-600"
+                    : "bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300"
+                }`}
+              >
+                S{idx + 2} · {lg.dep || "—"}→{lg.arr || "—"}
+              </button>
+            ))}
           </div>
+        )}
 
-          {/* ═══ SECTION 1: 24-HOUR UTC ACTUAL TIMES ═══ */}
-          <section className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-5 space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-200 dark:border-slate-800">
-              <div className="flex items-center gap-2">
-                <Clock className="w-5 h-5 text-sky-600" />
-                <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
-                  التوقيت الفعلي بنظام 24 ساعة (Actual Times — 24H UTC)
-                </h3>
+        {/* ═══ SIMPLE FORM BODY (MATCHING SCREENSHOTS) ═══ */}
+        <main className="flex-1 overflow-y-auto text-xs" dir="ltr">
+          {/* 1. COPY DATA FROM FW + BLOFF* / T/O* / LDG* / BLON* */}
+          <div className="p-3 border-b space-y-2" style={{ borderColor: "var(--border-default)" }}>
+            <div className="flex flex-wrap items-end gap-2">
+              <button
+                type="button"
+                onClick={copyFromFW}
+                className="px-2.5 py-1.5 rounded text-[11px] font-bold text-white uppercase tracking-tight leading-tight shrink-0 transition hover:opacity-90 active:scale-95 shadow-2xs"
+                style={{ backgroundColor: "#0ea5e9" }}
+              >
+                COPY DATA
+                <br />
+                FROM FW
+              </button>
+
+              <div className="grid grid-cols-4 gap-1.5 flex-1 min-w-[240px]">
+                <div>
+                  <label className="block text-[10.5px] font-bold mb-0.5">BLOFF*:</label>
+                  <Time24Input
+                    value={bloffHHMM}
+                    onChange={(hhmm) => updTimeField("std", depDate, hhmm)}
+                    compact={true}
+                    showNowButton={false}
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10.5px] font-bold mb-0.5">T/O*:</label>
+                  <Time24Input
+                    value={toHHMM}
+                    onChange={(hhmm) => updTimeField("takeoff", depDate, hhmm)}
+                    compact={true}
+                    showNowButton={false}
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10.5px] font-bold mb-0.5">LDG*:</label>
+                  <Time24Input
+                    value={ldgHHMM}
+                    onChange={(hhmm) => updTimeField("landing", arrDate, hhmm)}
+                    compact={true}
+                    showNowButton={false}
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10.5px] font-bold mb-0.5">BLON*:</label>
+                  <Time24Input
+                    value={blonHHMM}
+                    onChange={(hhmm) => updTimeField("sta", arrDate, hhmm)}
+                    compact={true}
+                    showNowButton={false}
+                  />
+                </div>
               </div>
-              <span className="text-xs font-mono text-slate-500 dark:text-slate-400">
-                صيغة الإدخال: 00:00 إلى 23:59 بتوقيت UTC (يمكنك كتابة 4 أرقام مباشرة مثل 1435 فتتحول إلى 14:35)
-              </span>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <Field label="تاريخ المغادرة / Departure Date">
-                <Input
-                  type="date"
-                  value={depDate}
-                  onChange={(e) => {
-                    const nextDate = e.target.value;
-                    setDepDate(nextDate);
-                    if (bloffHHMM) updTimeField("std", nextDate, bloffHHMM);
-                    if (toHHMM) updTimeField("takeoff", nextDate, toHHMM);
-                  }}
-                />
-              </Field>
-              <Field label="مطار الإقلاع / ADEP">
-                <Input value={flight.dep || ""} disabled className="font-mono font-bold" />
-              </Field>
-              <Field label="تاريخ الوصول / Arrival Date">
-                <Input
-                  type="date"
-                  value={arrDate}
-                  onChange={(e) => {
-                    const nextDate = e.target.value;
-                    setArrDate(nextDate);
-                    if (ldgHHMM) updTimeField("landing", nextDate, ldgHHMM);
-                    if (blonHHMM) updTimeField("sta", nextDate, blonHHMM);
-                  }}
-                />
-              </Field>
-              <Field label="مطار الهبوط / ADES">
-                <Input value={flight.arr || ""} disabled className="font-mono font-bold" />
-              </Field>
+            <div
+              className="flex items-center justify-between text-[11px] font-mono tabular-nums pt-0.5"
+              style={{ color: "var(--text-muted)" }}
+            >
+              <span>All times in UTC</span>
+              <div className="flex items-center gap-6 font-bold" style={{ color: "var(--text-primary)" }}>
+                <span>Σ {toHHMM && ldgHHMM ? flightDur.hhmm : "00:00"}</span>
+                <span>Σ {bloffHHMM && blonHHMM ? blockDur.hhmm : "00:00"}</span>
+              </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-1">
-              <Field label="1. تحرك البلوك / BLOFF (Off-Block 24H UTC) *">
-                <Time24Input
-                  value={bloffHHMM}
-                  onChange={(hhmm) => updTimeField("std", depDate, hhmm)}
-                  placeholder="08:00"
-                />
-              </Field>
-
-              <Field label="2. الإقلاع الفعلي / T/O (Takeoff 24H UTC)">
-                <Time24Input
-                  value={toHHMM}
-                  onChange={(hhmm) => updTimeField("takeoff", depDate, hhmm)}
-                  placeholder="08:15"
-                />
-              </Field>
-
-              <Field label="3. الهبوط الفعلي / LDG (Landing 24H UTC)">
-                <Time24Input
-                  value={ldgHHMM}
-                  onChange={(hhmm) => updTimeField("landing", arrDate, hhmm)}
-                  placeholder="10:45"
-                />
-              </Field>
-
-              <Field label="4. توقف البلوك / BLON (On-Block 24H UTC) *">
-                <Time24Input
-                  value={blonHHMM}
-                  onChange={(hhmm) => updTimeField("sta", arrDate, hhmm)}
-                  placeholder="11:00"
-                />
-              </Field>
-            </div>
-          </section>
-
-          {/* ═══ TWO-COLUMN GRID FOR FUEL & CREW + OPTIONAL JL ═══ */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-            {/* FUEL SECTION */}
-            <section className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-5 space-y-4">
-              <div className="flex items-center gap-2 pb-3 border-b border-slate-200 dark:border-slate-800">
-                <Fuel className="w-5 h-5 text-amber-500" />
-                <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
-                  بيانات الوقود / Fuel Log
-                </h3>
+            {/* Fuel Block (Simple 2-column label/input rows) */}
+            <div className="space-y-1.5 pt-1.5">
+              <div className="grid grid-cols-[140px_1fr] items-center gap-2">
+                <label className="text-[11px] font-medium">Block fuel*:</label>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="number"
+                    value={draft.actual?.blockFuel ?? ""}
+                    onChange={(e) => handleFuelChange("blockFuel", e.target.value)}
+                    placeholder="7500"
+                    className="w-28 h-7 px-2 text-xs font-mono tabular-nums rounded border bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700 outline-none focus:border-sky-500"
+                  />
+                  <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>{fuelUnit}</span>
+                </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <Field label="وقود البلوك / Block Fuel *">
-                  <Input
+              <div className="grid grid-cols-[140px_1fr] items-center gap-2">
+                <label className="text-[11px] font-medium">Fuel used*:</label>
+                <div className="flex items-center gap-1.5">
+                  <input
                     type="number"
-                    value={draft.actual?.blockFuel ?? 0}
-                    onChange={(e) => handleFuelChange("blockFuel", +e.target.value)}
-                    className="font-mono tabular-nums"
+                    value={draft.actual?.fuelUsed ?? ""}
+                    onChange={(e) => handleFuelChange("fuelUsed", e.target.value)}
+                    placeholder="3850"
+                    className="w-28 h-7 px-2 text-xs font-mono tabular-nums rounded border bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700 outline-none focus:border-sky-500"
                   />
-                </Field>
-                <Field label="الوقود المستهلك / Fuel Used *">
-                  <Input
-                    type="number"
-                    value={draft.actual?.fuelUsed ?? 0}
-                    onChange={(e) => handleFuelChange("fuelUsed", +e.target.value)}
-                    className="font-mono tabular-nums"
-                  />
-                </Field>
-                <Field label="الوقود المتبقي / Fuel Remaining *">
-                  <Input
-                    type="number"
-                    value={draft.actual?.fuelRemaining ?? 0}
-                    onChange={(e) => upd("fuelRemaining", +e.target.value)}
-                    className="font-mono tabular-nums"
-                  />
-                </Field>
-                <Field label="الوقود المضاف / Uplift">
-                  <Input
-                    type="number"
-                    value={draft.actual?.uplift ?? 0}
-                    onChange={(e) => upd("uplift", +e.target.value)}
-                    className="font-mono tabular-nums"
-                  />
-                </Field>
-              </div>
-            </section>
-
-            {/* CREW SECTION */}
-            <section className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-5 space-y-4">
-              <div className="flex items-center gap-2 pb-3 border-b border-slate-200 dark:border-slate-800">
-                <Users className="w-5 h-5 text-emerald-500" />
-                <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
-                  طاقم القيادة / Operating Crew
-                </h3>
+                  <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>{fuelUnit}</span>
+                </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <Field label="قائد الطائرة / PIC (Pilot in Command)">
-                  <Input
-                    value={draft.actual?.pic || ""}
-                    onChange={(e) => upd("pic", e.target.value)}
-                    placeholder="Captain Full Name"
+              <div className="grid grid-cols-[140px_1fr] items-center gap-2">
+                <label className="text-[11px] font-medium">Fuel remaining*:</label>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="number"
+                    value={draft.actual?.fuelRemaining ?? ""}
+                    onChange={(e) => handleFuelChange("fuelRemaining", e.target.value)}
+                    placeholder="3650"
+                    className="w-28 h-7 px-2 text-xs font-mono tabular-nums font-bold rounded border bg-slate-50 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-emerald-600 dark:text-emerald-400 outline-none"
                   />
-                </Field>
-                <Field label="المساعد الأول / SIC (Second in Command)">
-                  <Input
-                    value={draft.actual?.sic || ""}
-                    onChange={(e) => upd("sic", e.target.value)}
-                    placeholder="First Officer Name"
-                  />
-                </Field>
-                <Field label="الطيار الممارس / Pilot Flying (PF)">
-                  <Select
-                    value={String(draft.actual?.picFlying ?? false)}
-                    onChange={(e) => upd("picFlying", e.target.value === "true")}
+                  <select
+                    value={fuelUnit}
+                    onChange={(e) => upd("fuelUnit", e.target.value)}
+                    className="h-7 px-1.5 text-[11px] rounded border bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700 outline-none"
                   >
-                    <option value="false">PIC (Captain)</option>
-                    <option value="true">SIC (First Officer)</option>
-                  </Select>
-                </Field>
-                <Field label="الطيار المراقب / Pilot Monitoring (PM)">
-                  <Input
-                    value={draft.actual?.pilotMonitoring || ""}
-                    onChange={(e) => upd("pilotMonitoring", e.target.value)}
-                    placeholder="PM Name"
-                  />
-                </Field>
+                    <option value="lbs">lbs</option>
+                    <option value="kg">kg</option>
+                  </select>
+                </div>
               </div>
-            </section>
+            </div>
           </div>
 
-          {/* ═══ OPTIONAL JL & REMARKS ═══ */}
-          <section className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-5 space-y-4">
-            <div className="flex items-center gap-2 pb-3 border-b border-slate-200 dark:border-slate-800">
-              <Sliders className="w-5 h-5 text-indigo-500" />
-              <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
-                بيانات تشغيلية إضافية / Additional Journey Log Details
-              </h3>
+          {/* 2. OPTIONAL JL FIELDS SECTION HEADER */}
+          <div className="px-3 py-1.5 bg-slate-200/75 dark:bg-slate-800/80 border-b text-[11px] font-bold uppercase tracking-wide text-slate-700 dark:text-slate-200" style={{ borderColor: "var(--border-default)" }}>
+            OPTIONAL JL FIELDS
+          </div>
+
+          {/* 3. OPTIONAL JL FIELDS ROWS */}
+          <div className="p-3 space-y-2">
+            {/* In-flight Rest Facility */}
+            <div className="grid grid-cols-[140px_1fr] items-center gap-2">
+              <label className="text-[11px] font-medium">In-flight Rest Facility:</label>
+              <select
+                value={draft.actual?.restFacility || "Suitable"}
+                onChange={(e) => upd("restFacility", e.target.value)}
+                className="w-44 h-7 px-2 text-xs rounded border bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700 outline-none"
+              >
+                <option value="Suitable">Suitable</option>
+                <option value="Not Suitable">Not Suitable</option>
+                <option value="Class 1">Class 1</option>
+                <option value="Class 2">Class 2</option>
+                <option value="Class 3">Class 3</option>
+              </select>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <Field label="مرافق الراحة بالرحلة / In-flight Rest Facility">
-                <Select
-                  value={draft.actual?.restFacility || "Suitable"}
-                  onChange={(e) => upd("restFacility", e.target.value)}
+            {/* Uplift */}
+            <div className="grid grid-cols-[140px_1fr] items-center gap-2">
+              <label className="text-[11px] font-medium">Uplift:</label>
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="number"
+                  value={draft.actual?.uplift ?? ""}
+                  onChange={(e) =>
+                    upd("uplift", e.target.value === "" ? "" : Number(e.target.value))
+                  }
+                  placeholder="0"
+                  className="w-24 h-7 px-2 text-xs font-mono tabular-nums rounded border bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700 outline-none focus:border-sky-500"
+                />
+                <select
+                  value={draft.actual?.upliftUnit || "lbs"}
+                  onChange={(e) => upd("upliftUnit", e.target.value)}
+                  className="h-7 px-1.5 text-xs rounded border bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700 outline-none"
                 >
-                  <option value="Suitable">Suitable</option>
-                  <option value="Not Suitable">Not Suitable</option>
-                  <option value="Class 1">Class 1</option>
-                  <option value="Class 2">Class 2</option>
-                  <option value="Class 3">Class 3</option>
-                </Select>
-              </Field>
-
-              <Field label="كود التأخير / IATA Delay Code">
-                <Input
-                  value={draft.actual?.delayCode || ""}
-                  onChange={(e) => upd("delayCode", e.target.value)}
-                  placeholder="مثال: 81 / 93"
-                  className="font-mono"
-                />
-              </Field>
-
-              <Field label="دقائق الطيران الليلي / Night Time [min]">
-                <Input
-                  type="number"
-                  value={draft.actual?.night ?? 0}
-                  onChange={(e) => upd("night", +e.target.value)}
-                  className="font-mono tabular-nums"
-                />
-              </Field>
-
-              <Field label="دقائق الطيران الآلي / Instrument [min]">
-                <Input
-                  type="number"
-                  value={draft.actual?.instrument ?? 0}
-                  onChange={(e) => upd("instrument", +e.target.value)}
-                  className="font-mono tabular-nums"
-                />
-              </Field>
+                  <option value="lbs">lbs</option>
+                  <option value="kg">kg</option>
+                </select>
+              </div>
             </div>
 
-            <Field label="ملاحظات سجل الرحلة / Journey Log Remarks">
-              <textarea
+            {/* Pilot monitoring */}
+            <div className="grid grid-cols-[140px_1fr] items-center gap-2">
+              <label className="text-[11px] font-medium">Pilot monitoring:</label>
+              <input
+                type="text"
+                value={draft.actual?.pilotMonitoring || ""}
+                onChange={(e) => upd("pilotMonitoring", e.target.value)}
+                placeholder="---"
+                className="w-36 h-7 px-2 text-xs rounded border bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700 outline-none focus:border-sky-500"
+              />
+            </div>
+
+            {/* Delay code (Live searchable dropdown matching screenshot) */}
+            <div className="grid grid-cols-[140px_1fr] items-start gap-2">
+              <label className="text-[11px] font-medium pt-1">Delay code:</label>
+              <DelayCodeInput
+                code={draft.actual?.delayCode || ""}
+                minutes={draft.actual?.delayMinutes ?? ""}
+                onChangeCode={(c) => upd("delayCode", c)}
+                onChangeMinutes={(m) => upd("delayMinutes", m)}
+                isAr={isAr}
+                className="w-52 max-w-full"
+              />
+            </div>
+
+            {/* Night time (Quick-pick dropdown + airborne sunset default) */}
+            <div className="grid grid-cols-[140px_1fr] items-start gap-2">
+              <label className="text-[11px] font-medium pt-1">Night time:</label>
+              <NightTimeInput
+                valueHHMM={effectiveNightHHMM}
+                nightMode={nightMode}
+                sunsetInAirHHMM={autoNightCalc.hhmm}
+                flightTimeHHMM={flightDur.hhmm}
+                blockTimeHHMM={blockDur.hhmm}
+                sunsetInfoText={
+                  nightMode === "auto"
+                    ? `${sunsetHint ? `${sunsetHint} · ` : ""}يُحتسب تلقائياً من الغروب في الجو`
+                    : ""
+                }
+                onSelectPreset={(modeId, hhmm, mins) => {
+                  setDraft((d) => ({
+                    ...d,
+                    actual: {
+                      ...(d.actual || {}),
+                      nightMode: modeId,
+                      nightTime: hhmm,
+                      night: mins,
+                    },
+                  }));
+                }}
+                onManualChange={(hhmm, mins) => {
+                  setDraft((d) => ({
+                    ...d,
+                    actual: {
+                      ...(d.actual || {}),
+                      nightMode: "manual",
+                      nightTime: hhmm,
+                      night: mins,
+                    },
+                  }));
+                }}
+                isAr={isAr}
+                className="w-32"
+              />
+            </div>
+
+            {/* PAX / Children / Infants / Bags / Cargo / Flight log */}
+            <div className="grid grid-cols-[140px_1fr] items-center gap-2">
+              <label className="text-[11px] font-medium">PAX:</label>
+              <input
+                type="number"
+                min={0}
+                value={draft.actual?.paxCount ?? ""}
+                onChange={(e) => upd("paxCount", e.target.value)}
+                placeholder="0"
+                className="w-24 h-7 px-2 text-xs font-mono tabular-nums rounded border bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700 outline-none"
+              />
+            </div>
+
+            <div className="grid grid-cols-[140px_1fr] items-center gap-2">
+              <label className="text-[11px] font-medium">Children:</label>
+              <input
+                type="number"
+                min={0}
+                value={draft.actual?.childrenCount ?? ""}
+                onChange={(e) => upd("childrenCount", e.target.value)}
+                placeholder="0"
+                className="w-24 h-7 px-2 text-xs font-mono tabular-nums rounded border bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700 outline-none"
+              />
+            </div>
+
+            <div className="grid grid-cols-[140px_1fr] items-center gap-2">
+              <label className="text-[11px] font-medium">Infants:</label>
+              <input
+                type="number"
+                min={0}
+                value={draft.actual?.infantsCount ?? ""}
+                onChange={(e) => upd("infantsCount", e.target.value)}
+                placeholder="0"
+                className="w-24 h-7 px-2 text-xs font-mono tabular-nums rounded border bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700 outline-none"
+              />
+            </div>
+
+            <div className="grid grid-cols-[140px_1fr] items-center gap-2">
+              <label className="text-[11px] font-medium">Bags:</label>
+              <input
+                type="number"
+                min={0}
+                value={draft.actual?.bagsCount ?? ""}
+                onChange={(e) => upd("bagsCount", e.target.value)}
+                placeholder="0"
+                className="w-24 h-7 px-2 text-xs font-mono tabular-nums rounded border bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700 outline-none"
+              />
+            </div>
+
+            <div className="grid grid-cols-[140px_1fr] items-center gap-2">
+              <label className="text-[11px] font-medium">Cargo:</label>
+              <input
+                type="number"
+                min={0}
+                value={draft.actual?.cargoWeight ?? ""}
+                onChange={(e) => upd("cargoWeight", e.target.value)}
+                placeholder="0"
+                className="w-24 h-7 px-2 text-xs font-mono tabular-nums rounded border bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700 outline-none"
+              />
+            </div>
+
+            <div className="grid grid-cols-[140px_1fr] items-center gap-2">
+              <label className="text-[11px] font-medium">Flight log:</label>
+              <input
+                type="text"
+                value={draft.actual?.flightLogRef || ""}
+                onChange={(e) => upd("flightLogRef", e.target.value)}
+                placeholder="---"
+                className="w-32 h-7 px-2 text-xs font-mono rounded border bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700 outline-none"
+              />
+            </div>
+
+            <div className="grid grid-cols-[140px_1fr] items-center gap-2">
+              <label className="text-[11px] font-medium">Discretion for extension:</label>
+              <input
+                type="checkbox"
+                checked={Boolean(draft.actual?.discretionExtension)}
+                onChange={(e) => upd("discretionExtension", e.target.checked)}
+                className="w-4 h-4 accent-sky-600 rounded cursor-pointer"
+              />
+            </div>
+
+            <div className="grid grid-cols-[140px_1fr] items-center gap-2 pt-1 border-t" style={{ borderColor: "var(--border-default)" }}>
+              <label className="text-[11px] font-medium">Status:</label>
+              <select
+                value={draft.status}
+                onChange={(e) => setDraft({ ...draft, status: e.target.value })}
+                className="w-44 h-7 px-2 text-xs font-bold rounded border bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700 outline-none"
+              >
+                <option value="ARRIVED">ARRIVED — وصلت</option>
+                <option value="DEPARTED">DEPARTED — غادرت</option>
+                <option value="IN_FLIGHT">IN_FLIGHT — بالجو</option>
+                <option value="DELAYED">DELAYED — متأخرة</option>
+                <option value="CANCELLED">CANCELLED — ملغاة</option>
+              </select>
+            </div>
+
+            <div className="grid grid-cols-[140px_1fr] items-center gap-2">
+              <label className="text-[11px] font-medium">Remarks:</label>
+              <input
+                type="text"
                 value={draft.actual?.notes || ""}
                 onChange={(e) => upd("notes", e.target.value)}
-                rows={2}
-                placeholder="أي ملاحظات فنية أو تشغيلية خاصة بالرحلة المنفذة..."
-                className="w-full px-3 py-2 rounded-lg text-sm border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 outline-none"
+                placeholder="Notes..."
+                className="w-full max-w-xs h-7 px-2 text-xs rounded border bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-700 outline-none"
               />
-            </Field>
-          </section>
-        </div>
-      </main>
+            </div>
+          </div>
+        </main>
 
-      {/* ═══ FULL-PAGE STICKY FOOTER ═══ */}
-      <footer className="px-6 py-3 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 shrink-0">
-        <div className="text-xs font-mono tabular-nums text-slate-500 dark:text-slate-400">
-          24H UTC Mode · BLOFF: <b>{bloffHHMM || "—"}</b> · BLON: <b>{blonHHMM || "—"}</b> · Block: <b>{blockDur.hhmm}</b>
-        </div>
-        <div className="flex items-center gap-2.5">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 whitespace-nowrap"
-          >
-            {t.cancel || "إلغاء"}
-          </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saving}
-            className="px-6 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-2 disabled:opacity-50 whitespace-nowrap"
-          >
-            <Save className="w-4 h-4" />
-            {saving ? "جاري الحفظ…" : "حفظ إكمال الرحلة (SAVE JL)"}
-          </button>
-        </div>
-      </footer>
+        {/* ═══ COMPACT FOOTER (SAVE / DELETE / CANCEL) ═══ */}
+        <footer
+          className="px-3.5 py-2.5 border-t flex items-center justify-between gap-2 shrink-0"
+          style={{ borderColor: "var(--border-default)", backgroundColor: "var(--bg-app)" }}
+          dir="ltr"
+        >
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={saving}
+              onClick={handleSave}
+              className="px-4 py-1.5 rounded text-xs font-bold text-white bg-sky-500 hover:bg-sky-600 disabled:opacity-50 transition flex items-center gap-1.5 shadow-2xs"
+            >
+              {saving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+              <span>{saving ? "SAVING..." : "SAVE"}</span>
+            </button>
+
+            {typeof onDelete === "function" && flight?.id && (
+              <button
+                type="button"
+                disabled={saving}
+                onClick={async () => {
+                  const ok = await confirmAction(
+                    `هل أنت متأكد من حذف هذه الرحلة (${sectorFlightNo}) نهائياً؟`
+                  );
+                  if (ok) {
+                    await onDelete(flight.id);
+                    onClose();
+                  }
+                }}
+                className="px-3 py-1.5 rounded text-xs font-bold text-white bg-orange-600 hover:bg-orange-700 disabled:opacity-50 transition flex items-center gap-1"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>DELETE FLIGHT</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              disabled={saving}
+              onClick={onClose}
+              className="px-3.5 py-1.5 rounded border text-xs font-bold hover:opacity-80 transition"
+              style={{
+                borderColor: "var(--border-default)",
+                color: "var(--text-primary)",
+                backgroundColor: "var(--bg-card)",
+              }}
+            >
+              CANCEL
+            </button>
+          </div>
+
+          <span className="text-[10.5px] font-mono tabular-nums hidden sm:inline" style={{ color: "var(--text-muted)" }}>
+            Block {blockDur.hhmm} · Night {effectiveNightHHMM}
+          </span>
+        </footer>
+      </div>
     </div>
   );
 }

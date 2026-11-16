@@ -135,6 +135,7 @@ export function PermitsModule({
   const isAr = (lang || document.documentElement.lang || "ar") === "ar";
   const canViewPermits = checkPerm(user, "permits.view");
   const canViewForms = checkPerm(user, "forms.view");
+  const canAiScanner = checkPerm(user, "forms.ai_scanner");
 
   const hubTabs = useMemo(() => {
     const list = [];
@@ -189,18 +190,18 @@ export function PermitsModule({
   return (
     <div className="space-y-4 fade-in">
       {/* ═══ UNIFIED PERMITS & FORMS HUB HEADER ═══ */}
-      <div className="rounded-xl p-4" style={cardStyle}>
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-          <div className="flex items-center gap-3">
+      <div className="rounded-xl p-3" style={cardStyle}>
+        <div className="flex flex-wrap items-center justify-between gap-2.5 mb-2.5">
+          <div className="flex items-center gap-2.5">
             <div
-              className="w-11 h-11 rounded-xl flex items-center justify-center text-white shadow-sm shrink-0"
+              className="w-8 h-8 rounded-lg flex items-center justify-center text-white shadow-xs shrink-0"
               style={{ background: "var(--brand-gradient)" }}
             >
-              <FileSignature className="w-6 h-6" />
+              <FileSignature className="w-4 h-4" />
             </div>
             <div>
               <h1
-                className="text-lg md:text-xl font-bold"
+                className="text-base md:text-lg font-bold leading-tight"
                 style={{ color: "var(--text-primary)" }}
               >
                 {isAr
@@ -215,7 +216,7 @@ export function PermitsModule({
             </div>
           </div>
 
-          {activeTab !== "forms" && canViewPermits && (
+          {activeTab !== "forms" && canViewPermits && canAiScanner && (
             <button
               type="button"
               onClick={() => setShowSmartScanner(true)}
@@ -273,7 +274,7 @@ export function PermitsModule({
           settings={settings}
           user={user}
           setSyncStatus={setSyncStatus}
-          onOpenScanner={() => setShowSmartScanner(true)}
+          onOpenScanner={canAiScanner ? () => setShowSmartScanner(true) : undefined}
         />
       )}
 
